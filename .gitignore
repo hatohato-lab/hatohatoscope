@@ -1,0 +1,19 @@
+# ローカル設定・生成物
+.claude/
+.DS_Store
+Thumbs.db
+*.log
+
+# ローカル専用ドキュメント（リポジトリに含めない）
+01_調査/
+00_設計書/
+
+# ローカル環境ごとの設定（見本は api/config.example.php・api/roots.example.php）
+api/config.php
+api/roots.php
+
+# 使う人ごとのAI運用設定（各自のものを置く）
+CLAUDE.md
+
+# 旧ビューアの残骸（未使用）
+css/
