@@ -91,6 +91,11 @@
   .tree-file a:hover { background: #e8e8e8; text-decoration: underline; }
   .tree-file a.active { background: #d6e4f5; font-weight: bold; }
   .tree-file a.nonview { color: #777; cursor: default; }
+  /* git状態の色つけ（VS Code風：変更=オレンジ・新規=緑） */
+  .tree-file a.git-mod { color: #b45f06; }
+  .tree-file a.git-new { color: #2e7d32; }
+  .tree-folder-name.git-mod > .tree-folder-label { color: #b45f06; }
+  .tree-folder-name.git-new > .tree-folder-label { color: #2e7d32; }
   .tree-c-copy { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #888; background: #ececec; border: 1px solid #d5d5d5; border-radius: 3px; cursor: pointer; user-select: none; }
   .tree-c-copy:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   .tree-c-copy.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
@@ -415,6 +420,41 @@
     if (currentWin) revealInTree(currentWin);
     // 裏の自動更新では、見ていた位置が飛ばないようスクロールを元に戻す
     if (keepScroll && menu) menu.scrollTop = st;
+    // gitの変更状態で色をつける（非同期・失敗しても表示には影響させない）
+    applyGitStatus();
+  }
+
+  // ===== gitの状態でツリーに色をつける（VS Code風：変更=オレンジ・新規=緑） =====
+  function applyGitStatus() {
+    fetch('git_status.php?t=' + Date.now()).then(function (r) { return r.json(); }).then(function (data) {
+      if (!data || !data.files) return;
+      var files = {};
+      var dirs = {};   // 変更を含むフォルダ（modが優先）
+      Object.keys(data.files).forEach(function (p) {
+        var cls = data.files[p];
+        files[p.toLowerCase()] = cls;
+        var cur = p, i;
+        while ((i = cur.lastIndexOf('\\')) > 2) {
+          cur = cur.substring(0, i);
+          var k = cur.toLowerCase();
+          if (dirs[k] === 'mod') break;
+          dirs[k] = (cls === 'mod') ? 'mod' : (dirs[k] || 'new');
+        }
+      });
+      treeEl.querySelectorAll('.tree-file').forEach(function (n) {
+        var c = n.querySelector('.tree-c-copy');
+        var a = n.querySelector('a');
+        if (!c || !a) return;
+        a.classList.remove('git-mod', 'git-new');
+        var cls = files[(c.dataset.path || '').toLowerCase()];
+        if (cls) a.classList.add('git-' + cls);
+      });
+      treeEl.querySelectorAll('.tree-folder-name').forEach(function (f) {
+        f.classList.remove('git-mod', 'git-new');
+        var cls = dirs[(f.dataset.path || '').toLowerCase()];
+        if (cls) f.classList.add('git-' + cls);
+      });
+    }).catch(function () {});
   }
 
   function load(fresh) {
