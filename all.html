@@ -363,7 +363,10 @@
     var out = '';
     for (var i = 0; i < lines.length; i++) {
       var ln = lines[i], cls = '';
-      if (/^\+\+\+ |^--- /.test(ln)) cls = 'dh';
+      if (/^# /.test(ln)) cls = 'dh';                            // git_diff.php の見出し行
+      else if (/^\?\? /.test(ln)) cls = 'da';                    // status: 未追跡ファイル
+      else if (/^(!!|[ MADRCU][MADRCU]) /.test(ln)) cls = 'dk';  // status: 変更ファイル
+      else if (/^\+\+\+ |^--- /.test(ln)) cls = 'dh';
       else if (/^@@/.test(ln)) cls = 'dk';
       else if (/^diff |^index /.test(ln)) cls = 'dh';
       else if (ln.charAt(0) === '+') cls = 'da';
