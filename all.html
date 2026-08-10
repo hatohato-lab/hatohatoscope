@@ -457,6 +457,17 @@
     }).catch(function () {});
   }
 
+  // 色の自動更新：画面に戻ってきた時＋2分ごとに取り直す（連発は30秒に1回まで。
+  // サーバ側にも90秒キャッシュがあるので、実際の全リポジトリスキャンは適度な頻度に収まる）
+  var lastGitStatusAt = 0;
+  function refreshGitStatus() {
+    if (Date.now() - lastGitStatusAt < 30000) return;
+    lastGitStatusAt = Date.now();
+    applyGitStatus();
+  }
+  window.addEventListener('focus', refreshGitStatus);
+  setInterval(refreshGitStatus, 120000);
+
   function load(fresh) {
     treeEl.innerHTML = '<div class="loading">読込中... 作業フォルダ全体をスキャン中（初回は数十秒、2回目以降は即時）</div>';
     fetch(API + (fresh ? '&fresh=1' : '') + '&t=' + Date.now()).then(function (r) {
