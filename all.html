@@ -99,6 +99,9 @@
   .tree-c-copy { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #888; background: #ececec; border: 1px solid #d5d5d5; border-radius: 3px; cursor: pointer; user-select: none; }
   .tree-c-copy:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   .tree-c-copy.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+  /* 変更のある行に出る差分ボタン（±） */
+  .tree-d-btn { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #b45f06; background: #fdf0e0; border: 1px solid #e8c9a0; border-radius: 3px; cursor: pointer; user-select: none; }
+  .tree-d-btn:hover { background: #b45f06; color: #fff; border-color: #b45f06; }
   .loading { color: #999; padding: 10px; }
 </style>
 </head>
@@ -230,6 +233,9 @@
   // 巨大ツリーでも固まらないよう、各ノードに個別付与せず treeEl 1つに委譲する。
   // （従来は数万ノードに addEventListener していたため、ここで固まっていた。）
   function onTreeClick(e) {
+    // 差分ボタン（±）：そのファイル／フォルダだけの差分を表示
+    var d = e.target.closest('.tree-d-btn');
+    if (d) { e.stopPropagation(); showDiff(d.dataset.path); return; }
     // パスコピー（フォルダ・ファイル共通）。開閉やファイル表示には伝播させない。
     var copy = e.target.closest('.tree-c-copy');
     if (copy) {
@@ -441,6 +447,20 @@
           dirs[k] = (cls === 'mod') ? 'mod' : (dirs[k] || 'new');
         }
       });
+      // 色つけと同時に、変更のある行へ差分ボタン（±）を出し入れする
+      function syncDiffBtn(row, copyEl, cls) {
+        var d = row.querySelector(':scope > .tree-d-btn') || (copyEl.nextElementSibling && copyEl.nextElementSibling.classList && copyEl.nextElementSibling.classList.contains('tree-d-btn') ? copyEl.nextElementSibling : null);
+        if (cls && !d) {
+          var b = document.createElement('span');
+          b.className = 'tree-d-btn';
+          b.dataset.path = copyEl.dataset.path;
+          b.title = '差分を表示';
+          b.textContent = '±';
+          copyEl.after(b);
+        } else if (!cls && d) {
+          d.remove();
+        }
+      }
       treeEl.querySelectorAll('.tree-file').forEach(function (n) {
         var c = n.querySelector('.tree-c-copy');
         var a = n.querySelector('a');
@@ -448,11 +468,14 @@
         a.classList.remove('git-mod', 'git-new');
         var cls = files[(c.dataset.path || '').toLowerCase()];
         if (cls) a.classList.add('git-' + cls);
+        syncDiffBtn(n, c, cls);
       });
       treeEl.querySelectorAll('.tree-folder-name').forEach(function (f) {
         f.classList.remove('git-mod', 'git-new');
+        var c = f.querySelector('.tree-c-copy');
         var cls = dirs[(f.dataset.path || '').toLowerCase()];
         if (cls) f.classList.add('git-' + cls);
+        if (c) syncDiffBtn(f, c, cls);
       });
     }).catch(function () {});
   }
@@ -517,15 +540,13 @@
     load(true);
   });
 
-  // git差分：入力欄のパス（フォルダでもファイルでも可）が属するリポジトリの未コミット差分を色つき表示
-  document.getElementById('diffBtn').addEventListener('click', function () {
-    var p = normPath(urlInput.value);
+  // git差分の表示（差分ボタン・ツリーの±ボタン共通）
+  // ファイルならそのファイルだけ、フォルダならその配下だけの差分が返る
+  function showDiff(p) {
     var msg = document.getElementById('saveMsg');
-    if (!p || !isAbsPath(p)) {
-      msg.style.color = '#c00'; msg.textContent = '差分を見たいフォルダかファイルの絶対パスを入れてから押してください';
-      return;
-    }
     msg.style.color = '#888'; msg.textContent = '差分を取得中...';
+    urlInput.value = p;
+    updateClearBtn();
     placeholder.style.display = 'none';
     exitEdit();
     iframe.style.display = 'block';
@@ -543,6 +564,15 @@
         msg.textContent = '';
       })
       .catch(function () { msg.style.color = '#c00'; msg.textContent = '差分の取得に失敗しました'; });
+  }
+  document.getElementById('diffBtn').addEventListener('click', function () {
+    var p = normPath(urlInput.value);
+    var msg = document.getElementById('saveMsg');
+    if (!p || !isAbsPath(p)) {
+      msg.style.color = '#c00'; msg.textContent = '差分を見たいフォルダかファイルの絶対パスを入れてから押してください';
+      return;
+    }
+    showDiff(p);
   });
 
   // パスをコピー（記号ボタン）。押したことが分かるよう1秒だけ ✓ に変える

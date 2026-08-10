@@ -30,9 +30,9 @@ if (is_file($rootsFile)) {
 $p = isset($_GET['p']) ? $_GET['p'] : '';
 if ($p === '') { http_response_code(400); echo 'no path'; exit; }
 
-// ファイルが指定されたら親フォルダを対象にする
-if (is_file($p)) { $p = dirname($p); }
-if (!is_dir($p)) { http_response_code(404); echo 'not found'; exit; }
+// ファイルならそのファイルだけ、フォルダならその配下だけの差分に絞る（リポジトリ最上位なら全体）
+$isFile = is_file($p);
+if (!$isFile && !is_dir($p)) { http_response_code(404); echo 'not found'; exit; }
 
 // 許可フォルダ配下か（字句＋実体の二段検査。serve.php と同方針）
 $pN = rtrim(strtolower(str_replace('\\', '/', $p)), '/');
@@ -52,7 +52,8 @@ if (!$reqOk || !$realOk) { http_response_code(403); echo 'forbidden (outside all
 function run_git($args) {
     return shell_exec('git -c core.quotepath=false ' . $args . ' 2>&1');
 }
-$dirArg = escapeshellarg($real);
+$dirForRepo = $isFile ? dirname($real) : $real;
+$dirArg = escapeshellarg($dirForRepo);
 $top = trim((string)run_git("-C $dirArg rev-parse --show-toplevel"));
 if ($top === '' || stripos($top, 'fatal') !== false || stripos($top, 'not a git') !== false) {
     http_response_code(404); echo 'not a git repository: ' . $p; exit;
@@ -67,11 +68,33 @@ foreach ($allowedRoots as $ar) {
 if (!$topOk) { http_response_code(403); echo 'forbidden (repo root outside allowed roots)'; exit; }
 
 $topArg = escapeshellarg($top);
-$status = (string)run_git("-C $topArg status --short");
-$unstaged = (string)run_git("-C $topArg diff");
-$staged = (string)run_git("-C $topArg diff --cached");
+
+// 対象がリポジトリ最上位以外なら、そのファイル／フォルダだけに差分を絞る
+$realFwd = str_replace('\\', '/', $real);
+$pathspec = '';
+$relLabel = '';
+if (strpos(strtolower($realFwd) . '/', $topN . '/') === 0 && strtolower($realFwd) !== $topN) {
+    $rel = substr($realFwd, strlen($topN) + 1);
+    $pathspec = ' -- ' . escapeshellarg($rel);
+    $relLabel = $rel;
+}
+
+$status = (string)run_git("-C $topArg status --short$pathspec");
+$unstaged = (string)run_git("-C $topArg diff$pathspec");
+$staged = (string)run_git("-C $topArg diff --cached$pathspec");
+
+// 未追跡の新規ファイル単体は「全行追加」として見せる
+if ($isFile && trim($unstaged) === '' && trim($staged) === '' && strpos(ltrim($status), '??') === 0) {
+    $ni = (string)run_git("diff --no-index -- NUL " . escapeshellarg($real));
+    if (trim($ni) !== '') {
+        $unstaged = "# 未追跡の新規ファイル（全行が追加扱い）\n" . $ni;
+    } else {
+        $unstaged = "# 未追跡の新規ファイルです（内容はファイルを開いて確認）\n";
+    }
+}
 
 $out  = "# リポジトリ: $top\n";
+if ($relLabel !== '') { $out .= "# 対象を絞り込み: $relLabel\n"; }
 $out .= "# 取得時刻: " . date('Y-m-d H:i:s') . "\n";
 $out .= "#\n# ==== 変更ファイル一覧 (git status --short) ====\n";
 $out .= ($status === '' ? "# （変更なし・作業ツリーはクリーン）\n" : $status);
