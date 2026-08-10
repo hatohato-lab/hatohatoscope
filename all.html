@@ -64,6 +64,8 @@
   .uh-del { flex: 0 0 auto; width: 18px; text-align: center; color: #999; border-radius: 3px; }
   .uh-del:hover { background: #c00; color: #fff; }
   #copyBtn { flex: 0 0 auto; width: 30px; font-size: 14px; padding: 4px 0; cursor: pointer; text-align: center; }
+  #diffBtn { flex: 0 0 auto; font-size: 12px; padding: 5px 8px; cursor: pointer; }
+  #diffBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   #copyBtn.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
   .viewer-area { flex: 1; position: relative; }
   #viewer { width: 100%; height: 100%; border: none; }
@@ -117,6 +119,7 @@
         <div id="urlHistory" class="url-history" style="display:none;"></div>
       </div>
       <button id="copyBtn" title="パスをコピー">📋</button>
+      <button id="diffBtn" title="このパスのgit差分を色つき表示">差分</button>
       <button id="editBtn" style="display:none;">編集</button>
       <button id="saveBtn" style="display:none;">保存</button>
       <button id="cancelBtn" style="display:none;">キャンセル</button>
@@ -457,6 +460,34 @@
   // 「更新」ボタン：キャッシュを使わず再スキャン（fresh=1）。ツリーの再描画で完了が分かる
   document.getElementById('reloadBtn').addEventListener('click', function () {
     load(true);
+  });
+
+  // git差分：入力欄のパス（フォルダでもファイルでも可）が属するリポジトリの未コミット差分を色つき表示
+  document.getElementById('diffBtn').addEventListener('click', function () {
+    var p = normPath(urlInput.value);
+    var msg = document.getElementById('saveMsg');
+    if (!p || !isAbsPath(p)) {
+      msg.style.color = '#c00'; msg.textContent = '差分を見たいフォルダかファイルの絶対パスを入れてから押してください';
+      return;
+    }
+    msg.style.color = '#888'; msg.textContent = '差分を取得中...';
+    placeholder.style.display = 'none';
+    exitEdit();
+    iframe.style.display = 'block';
+    document.getElementById('editBtn').style.display = 'none';
+    fetch('git_diff.php?p=' + encodeURIComponent(p) + '&t=' + Date.now())
+      .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+      .then(function (res) {
+        iframe.removeAttribute('src');
+        if (!res.ok) {
+          var jp = res.t.indexOf('not a git repository') >= 0 ? 'gitリポジトリではありません' : res.t;
+          iframe.srcdoc = errHtml('差分を取得できません: ' + esc(jp));
+        } else {
+          iframe.srcdoc = diffHtml(res.t);
+        }
+        msg.textContent = '';
+      })
+      .catch(function () { msg.style.color = '#c00'; msg.textContent = '差分の取得に失敗しました'; });
   });
 
   // パスをコピー（記号ボタン）。押したことが分かるよう1秒だけ ✓ に変える
