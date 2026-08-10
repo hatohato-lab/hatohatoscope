@@ -461,6 +461,7 @@
   // サーバ側にも90秒キャッシュがあるので、実際の全リポジトリスキャンは適度な頻度に収まる）
   var lastGitStatusAt = 0;
   function refreshGitStatus() {
+    if (document.hidden) return;   // タブが見えていない間は何もしない（無駄な負荷をかけない）
     if (Date.now() - lastGitStatusAt < 30000) return;
     lastGitStatusAt = Date.now();
     applyGitStatus();
