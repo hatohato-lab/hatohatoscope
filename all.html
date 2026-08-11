@@ -26,7 +26,9 @@
     background: #eee; border: 1px solid #bbb; border-radius: 3px; line-height: 1; text-align: center;
   }
   #toggleMenuBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
-  .menu-header { position: sticky; top: 0; background: #f7f7f7; padding-bottom: 8px; border-bottom: 1px solid #ddd; margin-bottom: 8px; }
+  /* z-index必須：ツリーの行が position:relative（ガイド線用）を持つため、
+     指定が無いと後から描画される行の文字が固定ヘッダーを突き抜けて見える */
+  .menu-header { position: sticky; top: 0; z-index: 10; background: #f7f7f7; padding-bottom: 8px; border-bottom: 1px solid #ddd; margin-bottom: 8px; }
   .menu-header .title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
   .menu-header .title { font-weight: bold; font-size: 15px; }
   #reloadBtn {
