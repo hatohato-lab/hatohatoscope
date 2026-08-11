@@ -845,10 +845,17 @@
     var q = urlInput.value.trim();
     if (!q || isAbsPath(q)) showHistory(''); else showSearch(q);
   }
-  urlInput.addEventListener('focus', showOnFocus);
-  // すでにフォーカスがある状態で押し直した時は focus が起きないので、click でも開く
+  // クリックしたら中身を全選択する（そのまま貼り付けて差し替えられるように）。
+  // 手で一部だけ選び直したい時は、選択操作が始まっている（=選択範囲がある）ので邪魔しない。
+  function selectAllPath() {
+    if (!urlInput.value) return;
+    urlInput.select();
+  }
+  urlInput.addEventListener('focus', function () { showOnFocus(); selectAllPath(); });
+  // すでにフォーカスがある状態で押し直した時は focus が起きないので、click でも処理する
   urlInput.addEventListener('click', function () {
     if (histEl.style.display === 'none') showOnFocus();
+    if (urlInput.selectionStart === urlInput.selectionEnd) selectAllPath();
   });
   urlInput.addEventListener('input', function () { updateClearBtn(); showSuggest(); });
   urlInput.addEventListener('blur', function () { setTimeout(hideHistory, 150); });
