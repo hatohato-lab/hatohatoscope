@@ -72,8 +72,16 @@
   .viewer-area { flex: 1; position: relative; }
   #viewer { width: 100%; height: 100%; border: none; }
   .placeholder { padding: 30px; color: #666; }
-  .tree-folder-name { cursor: pointer; display: flex; align-items: center; padding: 2px 0; user-select: none; white-space: nowrap; }
-  .tree-folder-name:hover { background: #e8e8e8; }
+  /* フォルダは「浮いた帯」にしてファイル（ただの行）と一目で区別する */
+  .tree-folder-name {
+    cursor: pointer; display: flex; align-items: center;
+    padding: 3px 6px; margin: 2px 0;
+    user-select: none; white-space: nowrap;
+    background: #ebedf0; border: 1px solid #dcdfe3; border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+    font-weight: 600;
+  }
+  .tree-folder-name:hover { background: #dbe6f3; border-color: #b6cbe4; }
   .tree-folder-icon { display: inline-block; width: 1.4em; flex: 0 0 auto; color: #555; }
   .tree-folder-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
   .tree-folder-content {
@@ -88,6 +96,8 @@
     content: ''; position: absolute; left: -12px; top: 0.7em;
     width: 9px; height: 1px; background: #c4c4c4;
   }
+  /* フォルダは帯の分だけ背が高いので、横のガイド線も中心に合わせ直す */
+  .tree-folder-content > .tree-folder::before { top: 1em; }
   .tree-file { display: flex; align-items: center; }
   .tree-file a { flex: 1 1 auto; padding: 2px 0 2px 2px; color: #1a4f8a; text-decoration: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tree-file a:hover { background: #e8e8e8; text-decoration: underline; }
