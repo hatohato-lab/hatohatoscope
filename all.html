@@ -21,11 +21,29 @@
   .dragbar:hover, .dragbar.dragging { background: #1a4f8a; }
   /* 左メニューを隠した状態（メニュー本体と境界バーを消し、ビューアを全幅にする） */
   .menu.collapsed, .dragbar.collapsed { display: none; }
+  /* ===== メニューの表示モード（左＝既定 / 下 / ポップアップ） ===== */
+  /* 下：ビューアを上・メニューを下に置く。横幅を一切食わない */
+  .container.mode-bottom { flex-direction: column-reverse; }
+  .container.mode-bottom .menu { width: auto !important; max-width: none; border-top: 1px solid #ddd; }
+  .container.mode-bottom .dragbar { cursor: row-resize; }
+  /* ポップアップ：メニューをビューアの上に浮かせる。レイアウトを占有しない */
+  .container.mode-popup .menu {
+    position: fixed; top: 52px; left: 10px; bottom: 10px; height: auto !important;
+    z-index: 200; border: 1px solid #aaa; border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.30);
+  }
+  .container.mode-popup .dragbar { display: none; }
   #toggleMenuBtn {
     flex: 0 0 auto; width: 28px; font-size: 14px; padding: 5px 0; cursor: pointer;
     background: #eee; border: 1px solid #bbb; border-radius: 3px; line-height: 1; text-align: center;
   }
   #toggleMenuBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
+  .mode-btn {
+    flex: 0 0 auto; font-size: 12px; padding: 5px 8px; cursor: pointer; line-height: 1.2;
+    background: #eee; border: 1px solid #bbb; border-radius: 3px;
+  }
+  .mode-btn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
+  .mode-btn.active { background: #1a4f8a; color: #fff; border-color: #1a4f8a; font-weight: bold; }
   /* z-index必須：ツリーの行が position:relative（ガイド線用）を持つため、
      指定が無いと後から描画される行の文字が固定ヘッダーを突き抜けて見える */
   .menu-header { position: sticky; top: 0; z-index: 10; background: #f7f7f7; padding-bottom: 8px; border-bottom: 1px solid #ddd; margin-bottom: 8px; }
@@ -132,7 +150,9 @@
   <div class="dragbar" id="dragbar" title="ドラッグで幅を変更"></div>
   <main class="content">
     <div class="url-bar">
-      <button id="toggleMenuBtn" title="左メニューを隠す / 表示する（Ctrl+B）">◀</button>
+      <button id="toggleMenuBtn" title="メニューを隠す / 表示する（Ctrl+B）">◀</button>
+      <button id="modeBottomBtn" class="mode-btn" title="メニューを画面下に移す / 左に戻す（横幅を空ける）">下</button>
+      <button id="modePopupBtn" class="mode-btn" title="メニューを浮かせて重ねる / 左に戻す（横幅を空ける）">窓</button>
       <div class="url-wrap">
         <input type="text" id="urlInput" autocomplete="off" spellcheck="false" placeholder="ファイル名で検索、またはファイル／フォルダの絶対パスを入力して Enter（↑↓で選択）">
         <span id="urlClearBtn" title="入力をクリア">×</span>
@@ -146,7 +166,7 @@
       <span id="saveMsg" style="margin-left:8px;font-size:13px;color:#178a3a;"></span>
     </div>
     <div class="viewer-area">
-      <div class="placeholder" id="placeholder">左のメニューからファイルを選ぶと、ここに表示されます。</div>
+      <div class="placeholder" id="placeholder">メニューからファイルを選ぶと、ここに表示されます。</div>
       <iframe id="viewer" style="display:none;"></iframe>
       <textarea id="editor" style="display:none;width:100%;height:100%;border:none;padding:12px;font-family:Consolas,monospace;font-size:14px;box-sizing:border-box;resize:none;"></textarea>
     </div>
@@ -174,6 +194,7 @@
   var EDIT_EXT = ['.md','.txt','.json','.py','.php','.js','.css','.html','.htm','.xml','.csv','.yml','.yaml','.sql','.sh','.bat','.puml','.ini',
                   '.gitignore','.env'];
   var STORAGE = 'allViewerOpenFolders';
+  var currentMenuMode = 'left';   // 'left' | 'bottom' | 'popup'（下の表示モードIIFEが設定する）
 
   function getOpen() { try { return JSON.parse(localStorage.getItem(STORAGE)) || []; } catch (e) { return []; } }
   function setOpen(a) { try { localStorage.setItem(STORAGE, JSON.stringify(a)); } catch (e) {} }
@@ -970,7 +991,7 @@
       .catch(function (e) { msg.style.color = '#c00'; msg.textContent = '保存失敗: ' + e; });
   });
 
-  // ===== 左メニュー幅をドラッグで変更（幅は記憶する） =====
+  // ===== メニューの大きさをドラッグで変更（左＝幅・下＝高さ。どちらも記憶する） =====
   (function () {
     var menu = document.querySelector('.menu');
     var dragbar = document.getElementById('dragbar');
@@ -986,13 +1007,18 @@
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       if (iframe) iframe.style.pointerEvents = '';
-      var w = parseInt(menu.style.width, 10);
-      if (!isNaN(w)) localStorage.setItem('allViewerMenuWidth', w);
+      if (currentMenuMode === 'bottom') {
+        var h = parseInt(menu.style.height, 10);
+        if (!isNaN(h)) localStorage.setItem('allViewerMenuHeight', h);
+      } else {
+        var w = parseInt(menu.style.width, 10);
+        if (!isNaN(w)) localStorage.setItem('allViewerMenuWidth', w);
+      }
     }
     dragbar.addEventListener('mousedown', function (e) {
       dragging = true;
       dragbar.classList.add('dragging');
-      document.body.style.cursor = 'col-resize';
+      document.body.style.cursor = (currentMenuMode === 'bottom') ? 'row-resize' : 'col-resize';
       document.body.style.userSelect = 'none';
       if (iframe) iframe.style.pointerEvents = 'none';
       e.preventDefault();
@@ -1000,10 +1026,58 @@
     document.addEventListener('mousemove', function (e) {
       if (!dragging) return;
       if (e.buttons === 0) { stop(); return; }
-      menu.style.width = clamp(e.clientX - menu.getBoundingClientRect().left) + 'px';
+      if (currentMenuMode === 'bottom') {
+        menu.style.height = clampMenuHeight(window.innerHeight - e.clientY) + 'px';
+      } else {
+        menu.style.width = clamp(e.clientX - menu.getBoundingClientRect().left) + 'px';
+      }
     });
     document.addEventListener('mouseup', stop);
     window.addEventListener('blur', stop);
+  })();
+
+  // 下モードのメニュー高さの範囲（画面を全部覆わないよう上限を付ける）
+  function clampMenuHeight(h) {
+    h = parseInt(h, 10);
+    if (isNaN(h)) h = 320;
+    var max = window.innerHeight - 120;
+    if (h < 100) h = 100;
+    if (h > max) h = max;
+    return h;
+  }
+
+  // ===== メニューの表示モード（左 / 下 / ポップアップ）。状態は記憶する =====
+  (function () {
+    var container = document.querySelector('.container');
+    var menu = document.querySelector('.menu');
+    var bBtn = document.getElementById('modeBottomBtn');
+    var pBtn = document.getElementById('modePopupBtn');
+    var KEY = 'allViewerMenuMode';
+    if (!container || !bBtn || !pBtn) return;
+
+    function apply(mode) {
+      currentMenuMode = mode;
+      container.classList.toggle('mode-bottom', mode === 'bottom');
+      container.classList.toggle('mode-popup', mode === 'popup');
+      bBtn.classList.toggle('active', mode === 'bottom');
+      pBtn.classList.toggle('active', mode === 'popup');
+      // 下のときだけ高さを持たせる（左・ポップアップは指定しない＝CSSに任せる）
+      menu.style.height = (mode === 'bottom')
+        ? clampMenuHeight(localStorage.getItem('allViewerMenuHeight') || 320) + 'px'
+        : '';
+    }
+    function set(mode) {
+      apply(mode);
+      try { localStorage.setItem(KEY, mode); } catch (e) {}
+    }
+
+    var saved = 'left';
+    try { saved = localStorage.getItem(KEY) || 'left'; } catch (e) {}
+    apply(saved === 'bottom' || saved === 'popup' ? saved : 'left');
+
+    // 同じボタンをもう一度押すと左（既定）に戻る
+    bBtn.addEventListener('click', function () { set(currentMenuMode === 'bottom' ? 'left' : 'bottom'); });
+    pBtn.addEventListener('click', function () { set(currentMenuMode === 'popup' ? 'left' : 'popup'); });
   })();
 
   // ===== 左メニューの表示 / 非表示（状態は記憶する） =====
