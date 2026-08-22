@@ -175,10 +175,36 @@
   // 表示対象のルートはサーバー側（api/config.php）で決まる。フロントはパスを持たない。
   var API = 'api/file_tree.php?root=1';
 
-  var VIEW_EXT = ['.html','.htm','.md','.pdf','.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.yml','.yaml','.svg','.puml','.diff','.patch',
+  var VIEW_EXT = ['.html','.htm','.md','.pdf','.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.ps1','.yml','.yaml','.svg','.puml','.diff','.patch',
                   '.gitignore','.gitattributes','.editorconfig','.ini','.toml','.conf','.cfg','.log'];
-  var TEXT_EXT = ['.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.yml','.yaml',
+  var TEXT_EXT = ['.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.ps1','.yml','.yaml',
                   '.gitignore','.gitattributes','.editorconfig','.ini','.toml','.conf','.cfg','.log'];
+
+  // ===== ソースコードの色付け（highlight.js） =====
+  // 色付けはプレビュー枠（iframe）の中だけで動く。ツリー・検索など本体側の動作には影響しない。
+  // 大きいファイルは重くなるので色付けしない（そのまま素のテキストで出す）。
+  // 2026-08-22 実測（1ファイルあたりの色付け時間）:
+  //   3〜6KB=0.1〜0.2秒 / 25KB(json)=0.3秒 / 55KB(html)=1.2秒
+  // 上限10万文字なら、遅くても2秒程度で収まる。超えるものは素のテキストにする。
+  var HL_MAX_CHARS = 100000;
+  var HL_LANG = {
+    '.py':'python', '.js':'javascript', '.json':'json', '.php':'php', '.css':'css',
+    '.xml':'xml', '.html':'xml', '.htm':'xml', '.svg':'xml', '.sql':'sql',
+    '.sh':'bash', '.bat':'dos', '.ps1':'powershell', '.yml':'yaml', '.yaml':'yaml',
+    '.ini':'ini', '.toml':'ini', '.conf':'ini', '.cfg':'ini',
+    '.gitignore':'bash', '.gitattributes':'bash', '.editorconfig':'ini'
+  };
+  function hlLangOf(ext) { return HL_LANG[ext] || ''; }
+  var HL_BASE = 'https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11';
+  // 標準バンドルに入っていない言語は、その言語のモジュールだけ追加で読む
+  // （2026-08-22 実測：powershell と dos は含まれておらず、そのままでは色が付かない）
+  var HL_EXTRA = ['powershell', 'dos'];
+  function hlExtraTags(lang) {
+    var list = lang ? (HL_EXTRA.indexOf(lang) >= 0 ? [lang] : []) : HL_EXTRA;
+    return list.map(function (l) {
+      return '<scr' + 'ipt src="' + HL_BASE + '/languages/' + l + '.min.js"></scr' + 'ipt>';
+    }).join('');
+  }
 
   var treeEl = document.getElementById('tree');
   // メニュー内の要素は「別窓へ切り離す」と document から消えるため、最初に掴んでおく
@@ -323,7 +349,7 @@
     if (isSelfViewer(winPath)) {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = textHtml(t, 'このファイルはこのビューア自身（all.html）です。入れ子表示を避けるため、ソースを表示しています。');
+        iframe.srcdoc = textHtml(t, 'このファイルはこのビューア自身（all.html）です。入れ子表示を避けるため、ソースを表示しています。', 'xml');
       }).catch(function () { iframe.srcdoc = errHtml('ファイル読込エラー'); });
       return;
     }
@@ -356,7 +382,7 @@
     if (TEXT_EXT.indexOf(ext) >= 0 || ext === '') {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = textHtml(t, '');
+        iframe.srcdoc = textHtml(t, '', hlLangOf(ext));
       }).catch(function () { iframe.srcdoc = errHtml('ファイル読込エラー'); });
       return;
     }
@@ -373,27 +399,53 @@
   }
 
   function mdHtml(inner) {
+    var hl = inner.length <= HL_MAX_CHARS;
     return '<html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;font-size:16px;padding:24px;line-height:1.7;max-width:900px;}pre{background:#f4f4f4;padding:10px;overflow-x:auto;}code{background:#f4f4f4;padding:2px 5px;}pre.mermaid{background:transparent;padding:0;overflow:visible;text-align:center;}table{border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}img{max-width:100%;}</style>'
       + '<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></scr' + 'ipt>'
+      // 本文中のコードブロックも色付けする（明るい背景に合う配色。長い文書では見送る）
+      + (hl ? '<link rel="stylesheet" href="' + HL_BASE + '/styles/github.min.css">'
+            + '<scr' + 'ipt src="' + HL_BASE + '/highlight.min.js"></scr' + 'ipt>' + hlExtraTags('') : '')
       + '</head><body>' + inner
       + '<scr' + 'ipt>window.addEventListener("DOMContentLoaded",function(){'
-      + 'if(!window.mermaid){return;}'
+      + 'if(window.mermaid){'
       + 'document.querySelectorAll("pre > code.language-mermaid").forEach(function(c){'
       + 'var p=c.parentElement,d=document.createElement("pre");d.className="mermaid";d.textContent=c.textContent;p.replaceWith(d);});'
-      + 'try{mermaid.initialize({startOnLoad:false,theme:"neutral",securityLevel:"loose"});mermaid.run();}catch(e){}'
+      + 'try{mermaid.initialize({startOnLoad:false,theme:"neutral",securityLevel:"loose"});mermaid.run();}catch(e){}}'
+      + 'if(window.hljs){'
+      + 'document.querySelectorAll("pre > code").forEach(function(c){'
+      + 'if(c.className.indexOf("mermaid")>=0){return;}'
+      + 'try{hljs.highlightElement(c);}catch(e){}});}'
       + '});</scr' + 'ipt>'
       + '</body></html>';
   }
   function errHtml(msg) { return '<html><body><p style="color:#c00;padding:20px;">' + msg + '</p></body></html>'; }
 
-  // テキストをそのまま表示する（note があれば先頭に一行だけ添える）
-  function textHtml(t, note) {
-    return '<html><head><meta charset="UTF-8"><style>body{margin:0;padding:12px;background:#1e1e1e;}'
+  // テキストを表示する（note があれば先頭に一行だけ添える）。
+  // lang を渡すと highlight.js で色付けする。大きいファイルは自動で色付けを見送る。
+  function textHtml(t, note, lang) {
+    var tooBig = t.length > HL_MAX_CHARS;
+    var useHl = !!lang && !tooBig;
+    if (lang && tooBig) {
+      note = (note ? note + ' ／ ' : '')
+        + 'サイズが大きいため色付けは省略しました（表示を軽くするため）';
+    }
+    return '<html><head><meta charset="UTF-8">'
+      + (useHl ? '<link rel="stylesheet" href="' + HL_BASE + '/styles/vs2015.min.css">' : '')
+      + '<style>body{margin:0;padding:12px;background:#1e1e1e;}'
       + '.note{color:#e6c07b;font-family:sans-serif;font-size:13px;border-bottom:1px solid #444;padding-bottom:8px;margin-bottom:10px;}'
       + 'pre{margin:0;font-family:Consolas,monospace;font-size:14px;color:#d4d4d4;white-space:pre-wrap;word-wrap:break-word;}'
-      + '</style></head><body>'
+      + 'code{font-family:inherit;font-size:inherit;background:transparent;padding:0;}'
+      + '</style>'
+      // 読み込めなかった場合でも素のテキストとして読める（色が付かないだけ）
+      + (useHl ? '<scr' + 'ipt src="' + HL_BASE + '/highlight.min.js"></scr' + 'ipt>' + hlExtraTags(lang) : '')
+      + '</head><body>'
       + (note ? '<div class="note">' + esc(note) + '</div>' : '')
-      + '<pre>' + esc(t) + '</pre></body></html>';
+      + '<pre><code' + (useHl ? ' class="language-' + lang + '"' : '') + '>' + esc(t) + '</code></pre>'
+      + (useHl ? '<scr' + 'ipt>window.addEventListener("DOMContentLoaded",function(){'
+          + 'if(!window.hljs){return;}'
+          + 'try{hljs.highlightElement(document.querySelector("pre > code"));}catch(e){}'
+          + '});</scr' + 'ipt>' : '')
+      + '</body></html>';
   }
 
   // このビューア自身（mydocs\all.html）かどうか
