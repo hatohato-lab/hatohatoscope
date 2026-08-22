@@ -21,18 +21,13 @@
   .dragbar:hover, .dragbar.dragging { background: #1a4f8a; }
   /* 左メニューを隠した状態（メニュー本体と境界バーを消し、ビューアを全幅にする） */
   .menu.collapsed, .dragbar.collapsed { display: none; }
-  /* ===== メニューの表示モード（左＝既定 / 下 / ポップアップ） ===== */
+  /* ===== メニューの置き場所（左＝既定 / 下 / 別窓に切り離し） ===== */
   /* 下：ビューアを上・メニューを下に置く。横幅を一切食わない */
   .container.mode-bottom { flex-direction: column-reverse; }
   .container.mode-bottom .menu { width: auto !important; max-width: none; border-top: 1px solid #ddd; }
   .container.mode-bottom .dragbar { cursor: row-resize; }
-  /* ポップアップ：メニューをビューアの上に浮かせる。レイアウトを占有しない */
-  .container.mode-popup .menu {
-    position: fixed; top: 52px; left: 10px; bottom: 10px; height: auto !important;
-    z-index: 200; border: 1px solid #aaa; border-radius: 8px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.30);
-  }
-  .container.mode-popup .dragbar { display: none; }
+  /* 切り離し中：メニュー本体は別ウィンドウにあるので、境界バーを隠してビューアを全幅にする */
+  .container.mode-detached .dragbar { display: none; }
   #toggleMenuBtn {
     flex: 0 0 auto; width: 28px; font-size: 14px; padding: 5px 0; cursor: pointer;
     background: #eee; border: 1px solid #bbb; border-radius: 3px; line-height: 1; text-align: center;
@@ -152,7 +147,7 @@
     <div class="url-bar">
       <button id="toggleMenuBtn" title="メニューを隠す / 表示する（Ctrl+B）">◀</button>
       <button id="modeBottomBtn" class="mode-btn" title="メニューを画面下に移す / 左に戻す（横幅を空ける）">下</button>
-      <button id="modePopupBtn" class="mode-btn" title="メニューを浮かせて重ねる / 左に戻す（横幅を空ける）">窓</button>
+      <button id="modePopupBtn" class="mode-btn" title="メニューを別のウィンドウに切り離す / 戻す（操作パネルとして独立させる）">別窓</button>
       <div class="url-wrap">
         <input type="text" id="urlInput" autocomplete="off" spellcheck="false" placeholder="ファイル名で検索、またはファイル／フォルダの絶対パスを入力して Enter（↑↓で選択）">
         <span id="urlClearBtn" title="入力をクリア">×</span>
@@ -186,6 +181,11 @@
                   '.gitignore','.gitattributes','.editorconfig','.ini','.toml','.conf','.cfg','.log'];
 
   var treeEl = document.getElementById('tree');
+  // メニュー内の要素は「別窓へ切り離す」と document から消えるため、最初に掴んでおく
+  // （getElementById で取り直すと切り離し中に null になり、更新や絞り込みが壊れる）
+  var menuEl = document.querySelector('.menu');
+  var reloadBtnEl = document.getElementById('reloadBtn');
+  var searchInputEl = document.getElementById('searchInput');
   var iframe = document.getElementById('viewer');
   var placeholder = document.getElementById('placeholder');
   var urlInput = document.getElementById('urlInput');
@@ -446,13 +446,13 @@
   }
 
   function renderTree(data, keepScroll) {
-    var menu = document.querySelector('.menu');
+    var menu = menuEl;
     var st = menu ? menu.scrollTop : 0;
     flatIndex = [];
     buildIndex(data.children || []);
     treeEl.innerHTML = render(data.children || [], 0);
     // 絞り込み中なら、描き直したツリーにも同じ絞り込みをかけ直す
-    var q = document.getElementById('searchInput').value.trim().toLowerCase();
+    var q = searchInputEl.value.trim().toLowerCase();
     if (q) filterTree(treeEl, q);
     // ツリーが出来た後に、今開いているファイルを選択状態にし直す。
     // （?open= やパス入力は、ツリー読込より先に走ることがあり、その時点では項目が無くて空振りするため）
@@ -550,7 +550,7 @@
     if (refreshing) return;
     refreshing = true;
     lastRefreshAt = Date.now();
-    var btn = document.getElementById('reloadBtn');
+    var btn = reloadBtnEl;
     btn.disabled = true; btn.textContent = '更新中…';
     fetch(API + '&fresh=1&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
       var data = JSON.parse(t);
@@ -569,7 +569,7 @@
   });
 
   // 「更新」ボタン：キャッシュを使わず再スキャン（fresh=1）。ツリーの再描画で完了が分かる
-  document.getElementById('reloadBtn').addEventListener('click', function () {
+  reloadBtnEl.addEventListener('click', function () {
     load(true);
   });
 
@@ -945,7 +945,7 @@
       if (f.nextElementSibling) f.nextElementSibling.style.display = isOpen ? 'block' : 'none';
     });
   }
-  document.getElementById('searchInput').addEventListener('input', function () {
+  searchInputEl.addEventListener('input', function () {
     var q = this.value.trim().toLowerCase();
     if (!q) { restoreTreeDisplay(); return; }
     filterTree(treeEl, q);
@@ -1046,38 +1046,110 @@
     return h;
   }
 
-  // ===== メニューの表示モード（左 / 下 / ポップアップ）。状態は記憶する =====
+  // ===== メニューの置き場所（左 / 下）。状態は記憶する =====
   (function () {
     var container = document.querySelector('.container');
-    var menu = document.querySelector('.menu');
     var bBtn = document.getElementById('modeBottomBtn');
-    var pBtn = document.getElementById('modePopupBtn');
     var KEY = 'allViewerMenuMode';
-    if (!container || !bBtn || !pBtn) return;
+    if (!container || !bBtn) return;
 
     function apply(mode) {
       currentMenuMode = mode;
       container.classList.toggle('mode-bottom', mode === 'bottom');
-      container.classList.toggle('mode-popup', mode === 'popup');
       bBtn.classList.toggle('active', mode === 'bottom');
-      pBtn.classList.toggle('active', mode === 'popup');
-      // 下のときだけ高さを持たせる（左・ポップアップは指定しない＝CSSに任せる）
-      menu.style.height = (mode === 'bottom')
+      // 下のときだけ高さを持たせる（左は指定しない＝CSSに任せる）
+      menuEl.style.height = (mode === 'bottom')
         ? clampMenuHeight(localStorage.getItem('allViewerMenuHeight') || 320) + 'px'
         : '';
     }
-    function set(mode) {
-      apply(mode);
-      try { localStorage.setItem(KEY, mode); } catch (e) {}
-    }
-
     var saved = 'left';
     try { saved = localStorage.getItem(KEY) || 'left'; } catch (e) {}
-    apply(saved === 'bottom' || saved === 'popup' ? saved : 'left');
+    apply(saved === 'bottom' ? 'bottom' : 'left');
 
     // 同じボタンをもう一度押すと左（既定）に戻る
-    bBtn.addEventListener('click', function () { set(currentMenuMode === 'bottom' ? 'left' : 'bottom'); });
-    pBtn.addEventListener('click', function () { set(currentMenuMode === 'popup' ? 'left' : 'popup'); });
+    bBtn.addEventListener('click', function () {
+      var mode = (currentMenuMode === 'bottom') ? 'left' : 'bottom';
+      apply(mode);
+      try { localStorage.setItem(KEY, mode); } catch (e) {}
+    });
+  })();
+
+  // ===== メニューを別ウィンドウへ切り離す（操作パネルとして独立させる） =====
+  // ツリーを作り直すのではなく、メニューの要素そのものを別ウィンドウへ移す。
+  // こうすると読み込み済みのツリー・検索索引・イベントがそのまま生き、
+  // 別窓でファイルを選ぶと本体側のビューアに表示される。
+  (function () {
+    var container = document.querySelector('.container');
+    var btn = document.getElementById('modePopupBtn');
+    if (!container || !btn) return;
+    var win = null;         // 切り離し先のウィンドウ
+    var slot = null;        // 戻す位置の目印
+    var watcher = null;     // 手で閉じられたのを検知する
+
+    function detach() {
+      var w = parseInt(menuEl.style.width, 10) || 520;
+      win = window.open('', 'hatohatoscopeMenu', 'width=' + (w + 60) + ',height=900,left=60,top=60');
+      if (!win) {
+        var msg = document.getElementById('saveMsg');
+        msg.style.color = '#c00';
+        msg.textContent = '別窓を開けませんでした（ブラウザのポップアップ許可が必要です）';
+        return;
+      }
+      // 本体と同じ見た目にするため、スタイルをそのまま複製して渡す
+      var css = '';
+      var st = document.querySelector('style');
+      if (st) css = st.textContent;
+      win.document.head.innerHTML = '<meta charset="UTF-8"><title>hatohatoscope — メニュー</title>'
+        + '<style>' + css + 'body{margin:0;background:#f7f7f7;}'
+        + '.menu{width:auto !important;height:100vh !important;max-width:none;}</style>';
+      win.document.body.innerHTML = '';
+      // 戻す位置に目印を置いてから、メニュー本体ごと移す
+      slot = document.createComment('menu-slot');
+      menuEl.parentNode.insertBefore(slot, menuEl);
+      menuEl.classList.remove('collapsed');   // 隠した状態のまま移すと別窓が空になる
+      win.document.body.appendChild(win.document.adoptNode(menuEl));
+      container.classList.add('mode-detached');
+      btn.classList.add('active');
+      // ★別窓が閉じられる「前」に本体へ戻す。
+      // 閉じ切ってから戻すと、破棄された文書と一緒にクリック等のイベントが失われ、
+      // 見た目は戻っているのに検索もクリックも効かないメニューになる（2026-08-22 実測）。
+      win.addEventListener('beforeunload', function () { redock(); });
+      // 上が働かなかったときの保険。ここに来た場合はイベントが死んでいるので読み直す
+      watcher = setInterval(function () {
+        if (!win || win.closed) {
+          var lost = (menuEl.ownerDocument !== document);
+          redock();
+          if (lost) location.reload();
+        }
+      }, 500);
+      win.focus();
+    }
+
+    function redock() {
+      if (watcher) { clearInterval(watcher); watcher = null; }
+      if (menuEl.ownerDocument !== document) {
+        document.adoptNode(menuEl);
+        if (slot && slot.parentNode) {
+          slot.parentNode.insertBefore(menuEl, slot);
+          slot.parentNode.removeChild(slot);
+        } else {
+          container.insertBefore(menuEl, container.firstChild);
+        }
+      }
+      slot = null;
+      container.classList.remove('mode-detached');
+      btn.classList.remove('active');
+      if (win && !win.closed) { try { win.close(); } catch (e) {} }
+      win = null;
+    }
+
+    btn.addEventListener('click', function () {
+      if (win && !win.closed) redock(); else detach();
+    });
+    // 本体を閉じる・再読込するときは、取り残しになる別窓も閉じる
+    window.addEventListener('beforeunload', function () {
+      if (win && !win.closed) { try { win.close(); } catch (e) {} }
+    });
   })();
 
   // ===== 左メニューの表示 / 非表示（状態は記憶する） =====
