@@ -127,6 +127,19 @@
   /* 変更のある行に出る差分ボタン（±） */
   .tree-d-btn { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #b45f06; background: #fdf0e0; border: 1px solid #e8c9a0; border-radius: 3px; cursor: pointer; user-select: none; }
   .tree-d-btn:hover { background: #b45f06; color: #fff; border-color: #b45f06; }
+  /* ===== ブックマーク ===== */
+  .bm-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
+  .bm-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px; }
+  .bm-list { max-height: 170px; overflow: auto; }
+  .bm-item { display: flex; align-items: center; gap: 6px; padding: 2px; cursor: pointer; white-space: nowrap; }
+  .bm-item:hover { background: #e8e8e8; }
+  .bm-name { flex: 0 0 auto; font-size: 13px; font-weight: bold; color: #1a4f8a; }
+  .bm-dir { flex: 1 1 auto; font-size: 12px; color: #1a1a1a; overflow: hidden; text-overflow: ellipsis; }
+  .bm-del { flex: 0 0 auto; width: 16px; text-align: center; color: #999; border-radius: 3px; }
+  .bm-del:hover { background: #c00; color: #fff; }
+  #bmBtn { flex: 0 0 auto; font-size: 14px; padding: 4px 7px; cursor: pointer; }
+  #bmBtn.on { background: #f6b93b; border-color: #d89b1c; color: #3a2e00; }
+  .tree-bm-star { flex: 0 0 auto; margin-right: 4px; color: #e8a11a; font-size: 12px; }
   .loading { color: #999; padding: 10px; }
 </style>
 </head>
@@ -139,6 +152,10 @@
         <button id="reloadBtn" title="フォルダを再スキャンしてツリーを最新にする">更新</button>
       </div>
       <input type="text" id="searchInput" placeholder="ファイル名で絞り込み...">
+      <div class="bm-box" id="bmBox" style="display:none;">
+        <div class="bm-head">★ ブックマーク</div>
+        <div class="bm-list" id="bmList"></div>
+      </div>
     </div>
     <div id="tree"><div class="loading">読込中...</div></div>
   </nav>
@@ -154,6 +171,7 @@
         <div id="urlHistory" class="url-history" style="display:none;"></div>
       </div>
       <button id="copyBtn" title="パスをコピー">📋</button>
+      <button id="bmBtn" title="今のパスをブックマークに登録 / 解除">★</button>
       <button id="diffBtn" title="このパスのgit差分を色つき表示">差分</button>
       <button id="editBtn" style="display:none;">編集</button>
       <button id="saveBtn" style="display:none;">保存</button>
@@ -212,6 +230,8 @@
   var menuEl = document.querySelector('.menu');
   var reloadBtnEl = document.getElementById('reloadBtn');
   var searchInputEl = document.getElementById('searchInput');
+  var bmBoxEl = document.getElementById('bmBox');
+  var bmListEl = document.getElementById('bmList');
   var iframe = document.getElementById('viewer');
   var placeholder = document.getElementById('placeholder');
   var urlInput = document.getElementById('urlInput');
@@ -332,6 +352,7 @@
   function openFile(winPath) {
     urlInput.value = winPath;
     updateClearBtn();
+    updateBmBtn();
     addHistory(winPath);
     currentWin = winPath;
     var url = toUrl(winPath);
@@ -513,6 +534,7 @@
     if (keepScroll && menu) menu.scrollTop = st;
     // gitの変更状態で色をつける（非同期・失敗しても表示には影響させない）
     applyGitStatus();
+    markTreeBookmarks();
   }
 
   // ===== gitの状態でツリーに色をつける（VS Code風：変更=オレンジ・新規=緑） =====
@@ -1002,6 +1024,114 @@
     if (!q) { restoreTreeDisplay(); return; }
     filterTree(treeEl, q);
   });
+
+  // ===== ブックマーク（よく使うファイル・フォルダを上部に固定して一発で開く） =====
+  // 置き場はブラウザ内（localStorage）。開いたフォルダ・履歴・表示モードと同じ扱い。
+  // ツリーの全行（2万件超）にボタンを置くと重くなるため、登録は上部の★ボタンで行い、
+  // ツリー側は登録済みの行にだけ★印を後から付ける。
+  var BM_KEY = 'allViewerBookmarks';
+
+  function getBm() { try { return JSON.parse(localStorage.getItem(BM_KEY)) || []; } catch (e) { return []; } }
+  function setBm(a) { try { localStorage.setItem(BM_KEY, JSON.stringify(a)); } catch (e) {} }
+  function isBm(p) {
+    var lp = (p || '').toLowerCase();
+    return getBm().some(function (b) { return b.path.toLowerCase() === lp; });
+  }
+  // 読み込み済みのツリーから、そのパスがフォルダかどうかを調べる
+  function isDirPath(p) {
+    var lp = p.toLowerCase();
+    for (var i = 0; i < flatIndex.length; i++) {
+      if (flatIndex[i].path.toLowerCase() === lp) return !!flatIndex[i].dir;
+    }
+    return false;
+  }
+  function toggleBm(p) {
+    if (!p) return;
+    var lp = p.toLowerCase();
+    var a = getBm();
+    var hit = a.filter(function (b) { return b.path.toLowerCase() === lp; });
+    if (hit.length) {
+      a = a.filter(function (b) { return b.path.toLowerCase() !== lp; });
+    } else {
+      a.push({ path: p, name: baseName(p), dir: isDirPath(p) });
+    }
+    setBm(a);
+    renderBookmarks();
+    markTreeBookmarks();
+    updateBmBtn();
+  }
+  function updateBmBtn() {
+    var btn = document.getElementById('bmBtn');
+    if (!btn) return;
+    var on = isBm(normPath(urlInput.value));
+    btn.classList.toggle('on', on);
+    btn.title = on ? 'ブックマークから外す' : '今のパスをブックマークに登録';
+  }
+  function renderBookmarks() {
+    var a = getBm();
+    if (!a.length) { bmBoxEl.style.display = 'none'; bmListEl.innerHTML = ''; return; }
+    var html = '';
+    a.forEach(function (b) {
+      html += '<div class="bm-item" data-path="' + esc(b.path) + '" title="' + esc(b.path) + '">'
+        + '<span class="uh-icon">' + iconOf(b.name, b.dir) + '</span>'
+        + '<span class="bm-name">' + esc(b.name) + '</span>'
+        + '<span class="bm-dir">' + esc(shortDir(dirName(b.path))) + '</span>'
+        + '<span class="bm-del" title="ブックマークから外す">×</span>'
+        + '</div>';
+    });
+    bmListEl.innerHTML = html;
+    bmBoxEl.style.display = 'block';
+  }
+  // 登録済みの行にだけ★印を付ける（件数が少ないので総なめしない）
+  function bmSelector(p) {
+    return '.tree-c-copy[data-path="' + p.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
+  }
+  function markTreeBookmarks() {
+    treeEl.querySelectorAll('.tree-bm-star').forEach(function (s) { s.remove(); });
+    getBm().forEach(function (b) {
+      var c = null;
+      try { c = treeEl.querySelector(bmSelector(b.path)); } catch (e) { return; }
+      if (!c) return;
+      var star = document.createElement('span');
+      star.className = 'tree-bm-star';
+      star.textContent = '★';
+      c.parentNode.insertBefore(star, c);
+    });
+  }
+  function openBookmark(p) {
+    if (isDirPath(p)) {
+      urlInput.value = p;
+      updateClearBtn();
+      updateBmBtn();
+      if (!revealFolderInTree(p)) refreshTree(function () { revealFolderInTree(p); });
+      return;
+    }
+    openFile(p);
+    revealInTree(p);
+  }
+
+  document.getElementById('bmBtn').addEventListener('click', function () {
+    var p = normPath(urlInput.value);
+    var msg = document.getElementById('saveMsg');
+    if (!p || !isAbsPath(p)) {
+      msg.style.color = '#c00';
+      msg.textContent = 'ブックマークするファイル／フォルダを開いてから押してください';
+      return;
+    }
+    toggleBm(p);
+  });
+  bmListEl.addEventListener('click', function (e) {
+    var del = e.target.closest('.bm-del');
+    if (del) {
+      var row = del.closest('.bm-item');
+      if (row) toggleBm(row.dataset.path);
+      return;
+    }
+    var item = e.target.closest('.bm-item');
+    if (item) openBookmark(item.dataset.path);
+  });
+  urlInput.addEventListener('input', updateBmBtn);
+  renderBookmarks();
 
   // ===== 編集機能 =====
   function exitEdit() {
