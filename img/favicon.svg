@@ -1,12 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- 小鳥（案A）：最小限の線のまるい小鳥。V字しっぽ・あし・頭の毛・目・オレンジのくちばし -->
-  <rect width="64" height="64" rx="14" fill="#ffffff"/>
-  <g fill="none" stroke="#2a2e34" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="34" cy="35" r="18"/>
+  <!-- 小鳥（案A・白い体／濃い青地）：体は白で塗りつぶし。しっぽ・あし・頭の毛は白い線。
+       目は体に埋もれないよう地と同じ濃い青。くちばしはオレンジ（2026-08-25 変更） -->
+  <rect width="64" height="64" rx="14" fill="#1a4f8a"/>
+  <g fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
     <path d="M17 29 L5 22 M16 37 L4 35"/>
     <path d="M29 55 L29 60 M40 55 L40 60"/>
     <path d="M32 17 Q33 9 39 11"/>
   </g>
-  <circle cx="41" cy="29" r="3.6" fill="#2a2e34"/>
+  <circle cx="34" cy="35" r="18" fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="41" cy="29" r="3.6" fill="#1a4f8a"/>
   <path d="M53 31 L62 35 L53 39 Z" fill="#f5a83c"/>
 </svg>
