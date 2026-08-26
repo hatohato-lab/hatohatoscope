@@ -130,12 +130,18 @@
   /* ===== ブックマーク ===== */
   .bm-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
   .bm-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px; }
-  .bm-list { max-height: 170px; overflow: auto; }
-  .bm-item { display: flex; align-items: center; gap: 6px; padding: 2px; cursor: pointer; white-space: nowrap; }
+  .bm-list { max-height: 210px; overflow: auto; }
+  /* 1行目＝名前、2行目＝作業フォルダ以降のパス。どのフォルダの物か一目で分かるようにする */
+  .bm-item { padding: 3px 4px; cursor: pointer; border-bottom: 1px solid #e6e6e6; text-align: left; }
   .bm-item:hover { background: #e8e8e8; }
-  .bm-name { flex: 0 0 auto; font-size: 13px; font-weight: bold; color: #1a4f8a; }
-  .bm-dir { flex: 1 1 auto; font-size: 12px; color: #1a1a1a; overflow: hidden; text-overflow: ellipsis; }
+  .bm-l1 { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .bm-name { flex: 1 1 auto; font-size: 13px; font-weight: bold; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
+  .bm-dir { font-size: 12px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-del { flex: 0 0 auto; width: 16px; text-align: center; color: #999; border-radius: 3px; }
+  /* 下モードは横に広いので1行に戻し、名前とパスを別の列にして頭を揃える */
+  .container.mode-bottom .bm-item { display: flex; align-items: center; gap: 12px; }
+  .container.mode-bottom .bm-l1 { flex: 0 0 280px; }
+  .container.mode-bottom .bm-dir { flex: 1 1 auto; }
   .bm-del:hover { background: #c00; color: #fff; }
   #bmBtn { flex: 0 0 auto; font-size: 14px; padding: 4px 7px; cursor: pointer; }
   #bmBtn.on { background: #f6b93b; border-color: #d89b1c; color: #3a2e00; }
@@ -507,6 +513,9 @@
 
   // 検索モード用に、ツリー全体を平坦な一覧 [{name, path, dir}] にしておく
   var flatIndex = [];
+  // 作業フォルダの最上位パス。ブックマークのパス表示を「ここから下」に短くするのに使う
+  // （環境ごとに違うので決め打ちせず、ツリーの受け取り時に覚える）
+  var treeRootPath = '';
   function buildIndex(items) {
     items.forEach(function (it) {
       if (it.children) {
@@ -521,6 +530,7 @@
   function renderTree(data, keepScroll) {
     var menu = menuEl;
     var st = menu ? menu.scrollTop : 0;
+    if (data.path) treeRootPath = data.path;
     flatIndex = [];
     buildIndex(data.children || []);
     treeEl.innerHTML = render(data.children || [], 0);
@@ -532,6 +542,9 @@
     if (currentWin) revealInTree(currentWin);
     // 裏の自動更新では、見ていた位置が飛ばないようスクロールを元に戻す
     if (keepScroll && menu) menu.scrollTop = st;
+    // 作業フォルダの最上位が分かってから、ブックマークのパス表示を短縮し直す
+    renderBookmarks();
+    markTreeBookmarks();
     // gitの変更状態で色をつける（非同期・失敗しても表示には影響させない）
     applyGitStatus();
     markTreeBookmarks();
@@ -1067,16 +1080,36 @@
     btn.classList.toggle('on', on);
     btn.title = on ? 'ブックマークから外す' : '今のパスをブックマークに登録';
   }
+  // 置き場所を「作業フォルダの最上位から下」だけにして短くする
+  // （C:\Users\... のような手前の部分は毎回同じで読む意味がないため）
+  function bmRelDir(p) {
+    var d = dirName(p);
+    var root = (treeRootPath || '').replace(/[\\/]+$/, '');
+    if (!root) return d;
+    var dl = d.toLowerCase(), rl = root.toLowerCase();
+    if (dl === rl) return '（作業フォルダの直下）';
+    if (dl.indexOf(rl + '\\') === 0) return d.substring(root.length + 1);
+    return d;   // 作業フォルダの外（.claude 等）は、そのまま出す
+  }
   function renderBookmarks() {
     var a = getBm();
     if (!a.length) { bmBoxEl.style.display = 'none'; bmListEl.innerHTML = ''; return; }
+    // 同じフォルダのものが隣り合うよう、フォルダ名 → 名前 の順に並べ替える
+    // （登録した順ではなく名前順。保存してある順序は変えない）
+    a = a.slice().sort(function (x, y) {
+      var c = bmRelDir(x.path).localeCompare(bmRelDir(y.path), 'ja');
+      if (c !== 0) return c;
+      return String(x.name).localeCompare(String(y.name), 'ja');
+    });
     var html = '';
     a.forEach(function (b) {
       html += '<div class="bm-item" data-path="' + esc(b.path) + '" title="' + esc(b.path) + '">'
+        + '<div class="bm-l1">'
         + '<span class="uh-icon">' + iconOf(b.name, b.dir) + '</span>'
         + '<span class="bm-name">' + esc(b.name) + '</span>'
-        + '<span class="bm-dir">' + esc(shortDir(dirName(b.path))) + '</span>'
         + '<span class="bm-del" title="ブックマークから外す">×</span>'
+        + '</div>'
+        + '<div class="bm-dir">' + esc(bmRelDir(b.path)) + '</div>'
         + '</div>';
     });
     bmListEl.innerHTML = html;
