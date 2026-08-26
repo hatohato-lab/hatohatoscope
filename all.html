@@ -135,8 +135,11 @@
   .bm-item { padding: 3px 4px; cursor: pointer; border-bottom: 1px solid #e6e6e6; text-align: left; }
   .bm-item:hover { background: #e8e8e8; }
   .bm-l1 { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  /* 絵文字は字ごとに幅が違う。固定幅にしないと行ごとに名前の開始位置がずれる */
+  .bm-item .uh-icon { flex: 0 0 18px; width: 18px; text-align: center; }
   .bm-name { flex: 1 1 auto; font-size: 13px; font-weight: bold; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
-  .bm-dir { font-size: 12px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 2行目のパスは、1行目の名前の真下から始める（18px + gap 5px） */
+  .bm-dir { padding-left: 23px; font-size: 12px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-del { flex: 0 0 auto; width: 16px; text-align: center; color: #999; border-radius: 3px; }
   /* 下モードは横に広いので1行に戻し、名前とパスを別の列にして頭を揃える */
   .container.mode-bottom .bm-item { display: flex; align-items: center; gap: 12px; }
@@ -403,8 +406,24 @@
       iframe.removeAttribute('srcdoc'); iframe.src = url + '&t=' + Date.now(); return;
     }
     if (ext === '.puml') {
+      // 図は同じ場所の _svg\<名前>.svg を使う。未生成なら真っ白になってしまうので、
+      // その場合は PlantUML のソースを色付きで表示する（2026-08-26）
       var svgWin = winPath.replace(/\\([^\\]+)\.puml$/i, '\\_svg\\$1.svg');
-      iframe.removeAttribute('srcdoc'); iframe.src = toUrl(svgWin) + '&t=' + Date.now(); return;
+      fetch(toUrl(svgWin) + '&t=' + Date.now()).then(function (r) {
+        if (!r.ok) return null;
+        return r.text();
+      }).then(function (svg) {
+        iframe.removeAttribute('src');
+        if (svg) {
+          iframe.srcdoc = '<html><head><meta charset="UTF-8"></head>'
+            + '<body style="margin:0;padding:12px;background:#fff;">' + svg + '</body></html>';
+          return;
+        }
+        return fetch(toUrl(winPath) + '&t=' + Date.now()).then(function (r2) { return r2.text(); }).then(function (t) {
+          iframe.srcdoc = textHtml(t, '図（_svg フォルダの SVG）が未生成のため、PlantUML のソースを表示しています。', '');
+        });
+      }).catch(function () { iframe.srcdoc = errHtml('PlantUML の読込エラー'); });
+      return;
     }
     if (TEXT_EXT.indexOf(ext) >= 0 || ext === '') {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
