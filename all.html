@@ -130,6 +130,9 @@
   /* ===== ブックマーク ===== */
   .bm-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
   .bm-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px; }
+  /* ブックマーク欄の下端つまみ（ドラッグで高さ変更） */
+  .bm-resize { height: 6px; margin-top: 3px; background: #d5d5d5; border-radius: 3px; cursor: row-resize; }
+  .bm-resize:hover, .bm-resize.dragging { background: #1a4f8a; }
   .bm-list { max-height: 210px; overflow: auto; }
   /* 1行目＝名前、2行目＝作業フォルダ以降のパス。どのフォルダの物か一目で分かるようにする */
   .bm-item { padding: 3px 4px; cursor: pointer; border-bottom: 1px solid #e6e6e6; text-align: left; }
@@ -164,6 +167,7 @@
       <div class="bm-box" id="bmBox" style="display:none;">
         <div class="bm-head">★ ブックマーク</div>
         <div class="bm-list" id="bmList"></div>
+        <div class="bm-resize" id="bmResize" title="ドラッグでブックマーク欄の高さを変更"></div>
       </div>
     </div>
     <div id="tree"><div class="loading">読込中...</div></div>
@@ -1184,6 +1188,43 @@
   });
   urlInput.addEventListener('input', updateBmBtn);
   renderBookmarks();
+
+  // ブックマーク欄の高さをドラッグで変更（高さは記憶する）
+  (function () {
+    var grip = document.getElementById('bmResize');
+    if (!grip) return;
+    var KEY = 'allViewerBmHeight';
+    function clampH(h) {
+      h = parseInt(h, 10);
+      if (isNaN(h)) return 210;
+      if (h < 60) h = 60;
+      if (h > 800) h = 800;
+      return h;
+    }
+    bmListEl.style.maxHeight = clampH(localStorage.getItem(KEY) || 210) + 'px';
+    grip.addEventListener('mousedown', function (e) {
+      // メニューが別窓に切り離されていても動くよう、要素が今いる文書で監視する
+      var doc = grip.ownerDocument;
+      grip.classList.add('dragging');
+      doc.body.style.cursor = 'row-resize';
+      doc.body.style.userSelect = 'none';
+      function move(ev) {
+        if (ev.buttons === 0) { stop(); return; }
+        bmListEl.style.maxHeight = clampH(ev.clientY - bmListEl.getBoundingClientRect().top) + 'px';
+      }
+      function stop() {
+        doc.removeEventListener('mousemove', move);
+        doc.removeEventListener('mouseup', stop);
+        grip.classList.remove('dragging');
+        doc.body.style.cursor = '';
+        doc.body.style.userSelect = '';
+        try { localStorage.setItem(KEY, parseInt(bmListEl.style.maxHeight, 10)); } catch (err) {}
+      }
+      doc.addEventListener('mousemove', move);
+      doc.addEventListener('mouseup', stop);
+      e.preventDefault();
+    });
+  })();
 
   // ===== 編集機能 =====
   function exitEdit() {
