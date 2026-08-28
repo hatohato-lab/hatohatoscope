@@ -1197,8 +1197,8 @@
     function clampH(h) {
       h = parseInt(h, 10);
       if (isNaN(h)) return 210;
-      if (h < 60) h = 60;
-      if (h > 800) h = 800;
+      if (h < 40) h = 40;          // つまみを掴めなくならない最小限だけ残す
+      if (h > 4000) h = 4000;      // 実質無制限（2026-08-28 上限800で頭打ちになる指摘を受け撤廃）
       return h;
     }
     bmListEl.style.maxHeight = clampH(localStorage.getItem(KEY) || 210) + 'px';
