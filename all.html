@@ -133,7 +133,9 @@
   /* ブックマーク欄の下端つまみ（ドラッグで高さ変更） */
   .bm-resize { height: 6px; margin-top: 3px; background: #d5d5d5; border-radius: 3px; cursor: row-resize; }
   .bm-resize:hover, .bm-resize.dragging { background: #1a4f8a; }
-  .bm-list { max-height: 210px; overflow: auto; }
+  /* height（上限ではなく高さそのもの）を指定する。
+     max-height だと中身の量までしか広がらず、ドラッグしても大きくならない（2026-08-28 修正） */
+  .bm-list { height: 210px; overflow: auto; }
   /* 1行目＝名前、2行目＝作業フォルダ以降のパス。どのフォルダの物か一目で分かるようにする */
   .bm-item { padding: 3px 4px; cursor: pointer; border-bottom: 1px solid #e6e6e6; text-align: left; }
   .bm-item:hover { background: #e8e8e8; }
@@ -1201,7 +1203,7 @@
       if (h > 4000) h = 4000;      // 実質無制限（2026-08-28 上限800で頭打ちになる指摘を受け撤廃）
       return h;
     }
-    bmListEl.style.maxHeight = clampH(localStorage.getItem(KEY) || 210) + 'px';
+    bmListEl.style.height = clampH(localStorage.getItem(KEY) || 210) + 'px';
     grip.addEventListener('mousedown', function (e) {
       // メニューが別窓に切り離されていても動くよう、要素が今いる文書で監視する
       var doc = grip.ownerDocument;
@@ -1210,7 +1212,7 @@
       doc.body.style.userSelect = 'none';
       function move(ev) {
         if (ev.buttons === 0) { stop(); return; }
-        bmListEl.style.maxHeight = clampH(ev.clientY - bmListEl.getBoundingClientRect().top) + 'px';
+        bmListEl.style.height = clampH(ev.clientY - bmListEl.getBoundingClientRect().top) + 'px';
       }
       function stop() {
         doc.removeEventListener('mousemove', move);
@@ -1218,7 +1220,7 @@
         grip.classList.remove('dragging');
         doc.body.style.cursor = '';
         doc.body.style.userSelect = '';
-        try { localStorage.setItem(KEY, parseInt(bmListEl.style.maxHeight, 10)); } catch (err) {}
+        try { localStorage.setItem(KEY, parseInt(bmListEl.style.height, 10)); } catch (err) {}
       }
       doc.addEventListener('mousemove', move);
       doc.addEventListener('mouseup', stop);
