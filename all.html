@@ -739,6 +739,17 @@
   }
   // 絶対パスかどうかの判定（ドライブ文字 or UNC）。相対パス・ファイル名は検索モードで扱う
   function isAbsPath(s) { return /^[a-zA-Z]:[\\\/]/.test(s) || /^\\\\/.test(s); }
+  // 選んだ項目を、ツリー表示領域の一番上（上部に固定されたブックマーク欄のすぐ下）へ送る。
+  // scrollIntoView({block:'start'}) だと、固定ヘッダーの裏に隠れてしまうため自前で計算する。
+  function scrollTreeItemToTop(el) {
+    if (!el || !menuEl) return;
+    var header = menuEl.querySelector('.menu-header');
+    // 固定ヘッダーの「実際の下端」を基準にする。
+    // メニュー上端＋ヘッダー高さで計算すると、内側の余白のぶんだけ裏に隠れる（2026-08-29 実測）
+    var base = header ? header.getBoundingClientRect().bottom : menuEl.getBoundingClientRect().top;
+    menuEl.scrollTop += el.getBoundingClientRect().top - base - 4;
+  }
+
   // ツリー内に同じファイルがあれば、強調表示して祖先フォルダを展開する
   function revealInTree(winPath) {
     var norm = winPath.toLowerCase();
@@ -757,7 +768,7 @@
         }
         p = p.parentElement;
       }
-      link.scrollIntoView({ block: 'center' });
+      scrollTreeItemToTop(link);
       return true;
     }
     return false;
@@ -783,7 +794,7 @@
         }
         pnode = pnode.parentElement;
       }
-      f.scrollIntoView({ block: 'center' });
+      scrollTreeItemToTop(f);
       // どこに飛んだか分かるよう一瞬ハイライトする
       f.style.background = '#d6e4f5';
       (function (el) { setTimeout(function () { el.style.background = ''; }, 1500); })(f);
