@@ -149,6 +149,10 @@
   /* ===== ブックマーク ===== */
   .bm-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
   .bm-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px; }
+  /* 左の絞り込み欄の下に出す「本文を検索」ボタン行 */
+  .tree-grep { display: none; padding: 6px 8px; margin: 4px 0; border: 1px solid #bbb; border-radius: 4px;
+    cursor: pointer; font-size: 13px; color: #000; background: #f7f7f7; }
+  .tree-grep:hover { background: #e8eefc; }
   /* ブックマーク欄の下端つまみ（ドラッグで高さ変更） */
   .bm-resize { height: 6px; margin-top: 3px; background: #d5d5d5; border-radius: 3px; cursor: row-resize; }
   .bm-resize:hover, .bm-resize.dragging { background: #1a4f8a; }
@@ -185,6 +189,7 @@
         <button id="reloadBtn" title="フォルダを再スキャンしてツリーを最新にする">更新</button>
       </div>
       <input type="text" id="searchInput" placeholder="ファイル名で絞り込み...">
+      <div class="tree-grep" id="treeGrep" title="ファイルの中身から探す"></div>
       <div class="bm-box" id="bmBox" style="display:none;">
         <div class="bm-head">★ ブックマーク</div>
         <div class="bm-list" id="bmList"></div>
@@ -1191,8 +1196,17 @@
   }
   searchInputEl.addEventListener('input', function () {
     var q = this.value.trim().toLowerCase();
-    if (!q) { restoreTreeDisplay(); return; }
-    filterTree(treeEl, q);
+    var grepBar = document.getElementById('treeGrep');
+    if (!q) { restoreTreeDisplay(); grepBar.style.display = 'none'; return; }
+    var any = filterTree(treeEl, q);
+    // 名前で見つからなくても中身から探せるよう、絞り込み中は常に本文検索ボタンを出す
+    var raw = this.value.trim();
+    grepBar.textContent = '🔎 本文を検索「' + raw + '」' + (any ? '' : '（名前の一致なし）');
+    grepBar.dataset.grepq = raw;
+    grepBar.style.display = 'block';
+  });
+  document.getElementById('treeGrep').addEventListener('click', function () {
+    if (this.dataset.grepq) runGrep(this.dataset.grepq);
   });
 
   // ===== ブックマーク（よく使うファイル・フォルダを上部に固定して一発で開く） =====
