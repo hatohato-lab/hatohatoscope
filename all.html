@@ -82,6 +82,13 @@
   #diffBtn { flex: 0 0 auto; font-size: 12px; padding: 5px 8px; cursor: pointer; }
   #diffBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   #copyBtn.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+  /* 開いているファイル名の帯（パス欄の下に常時表示。どの拡張子でも出す） */
+  .file-title { display: flex; align-items: baseline; gap: 10px; padding: 5px 10px;
+    background: #fff; border-bottom: 1px solid #ddd; white-space: nowrap; overflow: hidden; }
+  #fileTitleName { flex: 0 1 auto; font-size: 17px; font-weight: bold; color: #1a1a1a;
+    overflow: hidden; text-overflow: ellipsis; }
+  #fileTitleDir { flex: 1 1 auto; font-size: 12px; color: #555;
+    overflow: hidden; text-overflow: ellipsis; }
   .viewer-area { flex: 1; position: relative; }
   #viewer { width: 100%; height: 100%; border: none; }
   .placeholder { padding: 30px; color: #666; }
@@ -192,6 +199,9 @@
       <button id="saveBtn" style="display:none;">保存</button>
       <button id="cancelBtn" style="display:none;">キャンセル</button>
       <span id="saveMsg" style="margin-left:8px;font-size:13px;color:#178a3a;"></span>
+    </div>
+    <div class="file-title" id="fileTitle" style="display:none;">
+      <span id="fileTitleName"></span><span id="fileTitleDir"></span>
     </div>
     <div class="viewer-area">
       <div class="placeholder" id="placeholder">メニューからファイルを選ぶと、ここに表示されます。</div>
@@ -364,7 +374,17 @@
   }
   treeEl.addEventListener('click', onTreeClick);  // 1回だけ登録（reloadでも重複しない）
 
+  // ビューア上部にファイル名を大きく表示する（場所は作業フォルダ以降を添える）
+  function showFileTitle(winPath, prefix) {
+    var box = document.getElementById('fileTitle');
+    if (!box) return;
+    document.getElementById('fileTitleName').textContent = (prefix || '') + baseName(winPath);
+    document.getElementById('fileTitleDir').textContent = bmRelDir(winPath);
+    box.style.display = 'flex';
+  }
+
   function openFile(winPath) {
+    showFileTitle(winPath);
     urlInput.value = winPath;
     updateClearBtn();
     updateBmBtn();
@@ -750,6 +770,7 @@
   // git差分の表示（差分ボタン・ツリーの±ボタン共通）
   // ファイルならそのファイルだけ、フォルダならその配下だけの差分が返る
   function showDiff(p) {
+    showFileTitle(p, '差分: ');
     var msg = document.getElementById('saveMsg');
     msg.style.color = '#888'; msg.textContent = '差分を取得中...';
     urlInput.value = p;
