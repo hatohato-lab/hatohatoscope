@@ -90,6 +90,17 @@
   #fileTitleDir { flex: 1 1 auto; font-size: 12px; color: #555;
     overflow: hidden; text-overflow: ellipsis; }
   .viewer-area { flex: 1; position: relative; }
+  /* 目次ペイン（開いたMarkdown/HTMLの見出し一覧。右側に重ねる） */
+  #outlinePane { position: absolute; top: 0; right: 0; bottom: 0; width: 240px; overflow: auto;
+    background: #fafafa; border-left: 1px solid #ddd; padding: 8px; display: none; z-index: 5; }
+  .ol-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 6px; }
+  .ol-item { font-size: 13px; padding: 2px 4px; cursor: pointer; color: #1a4f8a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 3px; }
+  .ol-item:hover { background: #dbe6f3; }
+  .ol-l2 { padding-left: 16px; }
+  .ol-l3 { padding-left: 30px; font-size: 12px; }
+  #outlineBtn { flex: 0 0 auto; font-size: 12px; padding: 3px 8px; cursor: pointer; display: none; }
+  #outlineBtn.on { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   #viewer { width: 100%; height: 100%; border: none; }
   .placeholder { padding: 30px; color: #666; }
   /* フォルダは「浮いた帯」にしてファイル（ただの行）と一目で区別する */
@@ -119,6 +130,7 @@
   /* フォルダは帯の分だけ背が高いので、横のガイド線も中心に合わせ直す */
   .tree-folder-content > .tree-folder::before { top: 1em; }
   .tree-file { display: flex; align-items: center; }
+  .tree-f-icon { flex: 0 0 auto; margin-right: 4px; font-size: 12px; }
   .tree-file a { flex: 1 1 auto; padding: 2px 0 2px 2px; color: #1a4f8a; text-decoration: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tree-file a:hover { background: #e8e8e8; text-decoration: underline; }
   .tree-file a.active { background: #d6e4f5; font-weight: bold; }
@@ -202,10 +214,12 @@
     </div>
     <div class="file-title" id="fileTitle" style="display:none;">
       <span id="fileTitleName"></span><span id="fileTitleDir"></span>
+      <button id="outlineBtn" title="目次の表示 / 非表示">目次</button>
     </div>
     <div class="viewer-area">
       <div class="placeholder" id="placeholder">メニューからファイルを選ぶと、ここに表示されます。</div>
       <iframe id="viewer" style="display:none;"></iframe>
+      <div id="outlinePane"></div>
       <textarea id="editor" style="display:none;width:100%;height:100%;border:none;padding:12px;font-family:Consolas,monospace;font-size:14px;box-sizing:border-box;resize:none;"></textarea>
     </div>
   </main>
@@ -323,6 +337,9 @@
         var viewable = VIEW_EXT.indexOf(fext) >= 0 || fext === '';
         html += '<div class="tree-file">';
         html += '<span class="tree-c-copy" data-path="' + esc(it.path) + '" title="パスをコピー">c</span>';
+        // .md と .html だけアイコンで区別する（本人指定。他の拡張子は付けない）
+        if (fext === '.md') { html += '<span class="tree-f-icon">📝</span>'; }
+        else if (fext === '.html' || fext === '.htm') { html += '<span class="tree-f-icon">🌐</span>'; }
         if (viewable) {
           html += '<a class="viewlink" data-win="' + esc(it.path) + '" title="' + esc(it.name) + '">' + esc(it.name) + '</a>';
         } else {
@@ -892,7 +909,7 @@
     // 絶対パス以外（ファイル名・相対パス）は検索として扱う
     if (!isAbsPath(p)) { showSearch(p); return; }
     // フォルダのパスなら、ツリー上で展開して見せる（すでにツリーにあれば即時）
-    if (revealFolderInTree(p)) { msg.textContent = ''; return; }
+    if (revealFolderInTree(p)) { addHistory(p); msg.textContent = ''; return; }
     msg.style.color = '#888'; msg.textContent = '確認中...';
     fetch(toUrl(p) + '&t=' + Date.now()).then(function (r) {
       if (r.ok) {
@@ -908,7 +925,7 @@
           if (t.indexOf('not a file') >= 0) {
             msg.style.color = '#888'; msg.textContent = 'フォルダをスキャン中...';
             refreshTree(function () {
-              if (revealFolderInTree(p)) { msg.textContent = ''; }
+              if (revealFolderInTree(p)) { addHistory(p); msg.textContent = ''; }
               else { msg.style.color = '#c00'; msg.textContent = '開けません: フォルダがツリーに見つかりません（除外対象の可能性）'; }
             });
             return;
@@ -971,7 +988,7 @@
     var html = '<div class="uh-head">履歴（' + items.length + '件）　↑↓で選択・Enterで開く・×で削除</div>';
     items.forEach(function (p) {
       html += '<div class="uh-item" data-path="' + esc(p) + '" title="' + esc(p) + '">'
-        + '<span class="uh-icon">' + iconOf(baseName(p), false) + '</span>'
+        + '<span class="uh-icon">' + iconOf(baseName(p), isDirPath(p)) + '</span>'
         + '<span class="uh-name">' + esc(baseName(p)) + '</span>'
         + '<span class="uh-dir">' + esc(shortDir(dirName(p))) + '</span>'
         + '<span class="uh-del" title="この履歴を削除">×</span>'
@@ -1255,6 +1272,7 @@
       urlInput.value = p;
       updateClearBtn();
       updateBmBtn();
+      addHistory(p);
       if (!revealFolderInTree(p)) refreshTree(function () { revealFolderInTree(p); });
       return;
     }
@@ -1322,6 +1340,57 @@
     });
   })();
 
+  // ===== 目次ペイン：開いたMarkdown/HTMLの見出し一覧を右側に出す =====
+  var outlineTargets = [];
+  var OUTLINE_KEY = 'allViewerOutlineHidden';
+
+  function outlineHidden() {
+    try { return localStorage.getItem(OUTLINE_KEY) === '1'; } catch (e) { return false; }
+  }
+  function applyOutlineVisibility() {
+    var pane = document.getElementById('outlinePane');
+    var btn = document.getElementById('outlineBtn');
+    var has = outlineTargets.length > 0;
+    btn.style.display = has ? 'inline-block' : 'none';   // CSS既定がnoneのため明示する
+    btn.classList.toggle('on', has && !outlineHidden());
+    pane.style.display = (has && !outlineHidden()) ? 'block' : 'none';
+  }
+  function buildOutline() {
+    var pane = document.getElementById('outlinePane');
+    outlineTargets = [];
+    pane.innerHTML = '';
+    var ext = extOf(currentWin || '');
+    if (ext === '.md' || ext === '.html' || ext === '.htm') {
+      var doc;
+      try { doc = iframe.contentDocument; } catch (e) { doc = null; }
+      if (doc) {
+        var hs = doc.querySelectorAll('h1, h2, h3');
+        if (hs.length >= 2) {
+          var html = '<div class="ol-head">目次（' + hs.length + '）</div>';
+          for (var i = 0; i < hs.length; i++) {
+            var lv = hs[i].tagName.charAt(1);
+            html += '<div class="ol-item ol-l' + lv + '" data-i="' + i + '" title="'
+              + esc(hs[i].textContent) + '">' + esc(hs[i].textContent) + '</div>';
+          }
+          pane.innerHTML = html;
+          outlineTargets = Array.prototype.slice.call(hs);
+        }
+      }
+    }
+    applyOutlineVisibility();
+  }
+  iframe.addEventListener('load', buildOutline);
+  document.getElementById('outlinePane').addEventListener('click', function (e) {
+    var item = e.target.closest('.ol-item');
+    if (!item) return;
+    var h = outlineTargets[parseInt(item.dataset.i, 10)];
+    if (h && h.scrollIntoView) h.scrollIntoView({ block: 'start' });
+  });
+  document.getElementById('outlineBtn').addEventListener('click', function () {
+    try { localStorage.setItem(OUTLINE_KEY, outlineHidden() ? '0' : '1'); } catch (e) {}
+    applyOutlineVisibility();
+  });
+
   // ===== 編集機能 =====
   function exitEdit() {
     editor.style.display = 'none';
@@ -1336,6 +1405,8 @@
     fetch(toUrl(currentWin) + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
       editor.value = t;
       iframe.style.display = 'none';
+      document.getElementById('outlinePane').style.display = 'none';
+      document.getElementById('outlineBtn').style.display = 'none';
       editor.style.display = 'block';
       document.getElementById('editBtn').style.display = 'none';
       document.getElementById('saveBtn').style.display = '';
