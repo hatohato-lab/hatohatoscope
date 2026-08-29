@@ -397,7 +397,7 @@
     if (ext === '.md') {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = mdHtml(marked.parse(stripFrontmatter(t)));
+        iframe.srcdoc = mdHtml(marked.parse(stripFrontmatter(t)), dirName(winPath));
       }).catch(function () { iframe.srcdoc = errHtml('MD読込エラー'); });
       return;
     }
@@ -450,7 +450,7 @@
     return '<div style="white-space:pre-wrap;border-bottom:1px solid #e5e5e5;padding-bottom:8px;margin-bottom:14px;">' + fm + '</div>\n\n' + md.slice(m[0].length);
   }
 
-  function mdHtml(inner) {
+  function mdHtml(inner, baseDir) {
     var hl = inner.length <= HL_MAX_CHARS;
     return '<html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;font-size:16px;padding:24px;line-height:1.7;max-width:900px;}pre{background:#f4f4f4;padding:10px;overflow-x:auto;}code{background:#f4f4f4;padding:2px 5px;}pre.mermaid{background:transparent;padding:0;overflow:visible;text-align:center;}table{border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}img{max-width:100%;}</style>'
       + '<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></scr' + 'ipt>'
@@ -467,6 +467,18 @@
       + 'document.querySelectorAll("pre > code").forEach(function(c){'
       + 'if(c.className.indexOf("mermaid")>=0){return;}'
       + 'try{hljs.highlightElement(c);}catch(e){}});}'
+      + '});'
+      // リンクの振り分け：外部URLは新しいタブ、ファイルへのリンクは親のビューアに開かせる
+      + 'var HHDIR=' + JSON.stringify(baseDir || '') + ';'
+      + 'document.addEventListener("click",function(e){'
+      + 'var a=e.target.closest?e.target.closest("a"):null;'
+      + 'if(!a){return;}'
+      + 'var h=a.getAttribute("href")||"";'
+      + 'if(!h||h.charAt(0)==="#"){return;}'
+      + 'e.preventDefault();'
+      + 'if(h.indexOf("//")===0){window.open("https:"+h,"_blank","noopener");return;}'
+      + 'if(/^[a-z][a-z0-9+.-]*:/i.test(h)){window.open(a.href,"_blank","noopener");return;}'
+      + 'parent.postMessage({t:"hhscopeOpen",dir:HHDIR,href:h},"*");'
       + '});</scr' + 'ipt>'
       + '</body></html>';
   }
@@ -499,6 +511,56 @@
           + '});</scr' + 'ipt>' : '')
       + '</body></html>';
   }
+
+  // 相対リンクを絶対パスへ解決する（.. や . も処理。区切りは \ に統一）
+  function resolveRelPath(baseDir, href) {
+    try { href = decodeURIComponent(href); } catch (e) {}
+    href = href.split('#')[0].split('?')[0];
+    if (!href) return '';
+    href = href.replace(/\//g, '\\');
+    var joined = isAbsPath(href) ? href : (baseDir + '\\' + href);
+    var parts = joined.split('\\');
+    var out = [];
+    for (var i = 0; i < parts.length; i++) {
+      var seg = parts[i];
+      if (i > 0 && seg === '') continue;
+      if (seg === '.') continue;
+      if (seg === '..') { if (out.length > 1) out.pop(); continue; }
+      out.push(seg);
+    }
+    return out.join('\\');
+  }
+
+  // Markdown表示（srcdoc）内のファイルリンクは、メッセージで受け取ってビューアで開く
+  window.addEventListener('message', function (ev) {
+    var d = ev.data;
+    if (!d || d.t !== 'hhscopeOpen' || !d.href) return;
+    var p = resolveRelPath(d.dir || dirName(currentWin), d.href);
+    if (!p) return;
+    openFile(p);
+    revealInTree(p);
+  });
+
+  // serve.php経由で表示したHTML（同一オリジン）にも、読み込み後にリンク振り分けを仕込む。
+  // 外部URLは新しいタブ、ファイルへの相対リンクはビューア自身で開く
+  iframe.addEventListener('load', function () {
+    if (!iframe.getAttribute('src')) return;   // srcdoc表示は各テンプレ側のスクリプトが担当
+    var doc;
+    try { doc = iframe.contentDocument; } catch (e) { return; }   // PDFプラグイン等は触れない
+    if (!doc || !doc.addEventListener) return;
+    var baseDir = dirName(currentWin);
+    doc.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('a') : null;
+      if (!a) return;
+      var h = a.getAttribute('href') || '';
+      if (!h || h.charAt(0) === '#') return;
+      e.preventDefault();
+      if (h.indexOf('//') === 0) { window.open('https:' + h, '_blank', 'noopener'); return; }
+      if (/^[a-z][a-z0-9+.-]*:/i.test(h)) { window.open(a.href, '_blank', 'noopener'); return; }
+      var p = resolveRelPath(baseDir, h);
+      if (p) { openFile(p); revealInTree(p); }
+    });
+  });
 
   // このビューア自身（mydocs\all.html）かどうか
   function isSelfViewer(winPath) {
