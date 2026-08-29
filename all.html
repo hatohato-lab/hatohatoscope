@@ -449,23 +449,30 @@
       iframe.removeAttribute('srcdoc'); iframe.src = url + '&t=' + Date.now(); return;
     }
     if (ext === '.puml') {
-      // 図は同じ場所の _svg\<名前>.svg を使う。未生成なら真っ白になってしまうので、
-      // その場合は PlantUML のソースを色付きで表示する（2026-08-26）
+      // まずローカルの plantuml.jar でその場描画（api/puml.php・キャッシュ付き 2026-08-29）。
+      // jar が無い環境では従来どおり：同じ場所の _svg\<名前>.svg → 無ければソース表示
       var svgWin = winPath.replace(/\\([^\\]+)\.puml$/i, '\\_svg\\$1.svg');
-      fetch(toUrl(svgWin) + '&t=' + Date.now()).then(function (r) {
-        if (!r.ok) return null;
-        return r.text();
-      }).then(function (svg) {
+      function pumlShow(svg) {
         iframe.removeAttribute('src');
-        if (svg) {
-          iframe.srcdoc = '<html><head><meta charset="UTF-8"></head>'
-            + '<body style="margin:0;padding:12px;background:#fff;">' + svg + '</body></html>';
-          return;
-        }
-        return fetch(toUrl(winPath) + '&t=' + Date.now()).then(function (r2) { return r2.text(); }).then(function (t) {
-          iframe.srcdoc = textHtml(t, '図（_svg フォルダの SVG）が未生成のため、PlantUML のソースを表示しています。', '');
+        iframe.srcdoc = '<html><head><meta charset="UTF-8"></head>'
+          + '<body style="margin:0;padding:12px;background:#fff;">' + svg + '</body></html>';
+      }
+      function pumlFallback() {
+        return fetch(toUrl(svgWin) + '&t=' + Date.now()).then(function (r) {
+          return r.ok ? r.text() : null;
+        }).then(function (svg) {
+          if (svg) { pumlShow(svg); return; }
+          return fetch(toUrl(winPath) + '&t=' + Date.now()).then(function (r2) { return r2.text(); }).then(function (t) {
+            iframe.srcdoc = textHtml(t, '図の生成に失敗したため、PlantUML のソースを表示しています。', '');
+          });
         });
-      }).catch(function () { iframe.srcdoc = errHtml('PlantUML の読込エラー'); });
+      }
+      fetch('api/puml.php?p=' + encodeURIComponent(winPath) + '&t=' + Date.now()).then(function (r0) {
+        return r0.ok ? r0.text() : null;
+      }).then(function (svg0) {
+        if (svg0) { pumlShow(svg0); return; }
+        return pumlFallback();
+      }).catch(function () { pumlFallback(); });
       return;
     }
     if (TEXT_EXT.indexOf(ext) >= 0 || ext === '') {
@@ -1020,7 +1027,13 @@
     var items = nameHits.concat(pathHits);
     var total = items.length;
     if (!total) {
-      histEl.innerHTML = '<div class="uh-head">一致するファイルがありません</div>';
+      // 名前で見つからないときこそ本文検索の出番なので、🔎行は必ず出す
+      histEl.innerHTML = '<div class="uh-head">一致するファイルがありません</div>'
+        + '<div class="uh-item uh-grep" data-grepq="' + esc(q) + '">'
+        + '<span class="uh-icon">🔎</span>'
+        + '<span class="uh-name">本文を検索</span>'
+        + '<span class="uh-dir">ファイルの中身から「' + esc(q) + '」を探す</span>'
+        + '</div>';
       histEl.style.display = 'block';
       histSel = -1;
       return;
@@ -1035,6 +1048,11 @@
         + '<span class="uh-dir">' + esc(shortDir(dirName(it.path))) + '</span>'
         + '</div>';
     });
+    html += '<div class="uh-item uh-grep" data-grepq="' + esc(q) + '">'
+      + '<span class="uh-icon">🔎</span>'
+      + '<span class="uh-name">本文を検索</span>'
+      + '<span class="uh-dir">ファイルの中身から「' + esc(q) + '」を探す</span>'
+      + '</div>';
     histEl.innerHTML = html;
     histEl.style.display = 'block';
     histSel = -1;
@@ -1076,7 +1094,8 @@
       var idx = (histSel >= 0) ? histSel : (suggestMode === 'search' ? 0 : -1);
       if (idx >= 0) {
         var row = histRows()[idx];
-        if (row) { e.preventDefault(); chooseHistory(row.dataset.path); return true; }
+        if (row && row.dataset.grepq) { e.preventDefault(); runGrep(row.dataset.grepq); return true; }
+        if (row && row.dataset.path) { e.preventDefault(); chooseHistory(row.dataset.path); return true; }
       }
     }
     return false;
@@ -1091,7 +1110,9 @@
       return;
     }
     var item = e.target.closest('.uh-item');
-    if (item) chooseHistory(item.dataset.path);
+    if (!item) return;
+    if (item.dataset.grepq) { runGrep(item.dataset.grepq); return; }
+    if (item.dataset.path) chooseHistory(item.dataset.path);
   });
   // 入力欄に入った時点：空かパスなら履歴を全件出す（パスで絞ると1件しか出ず、切り替えに使えないため）。
   // 検索語が入っていれば検索結果を出す。
@@ -1390,6 +1411,74 @@
     try { localStorage.setItem(OUTLINE_KEY, outlineHidden() ? '0' : '1'); } catch (e) {}
     applyOutlineVisibility();
   });
+
+  // ===== 全文検索（本文検索）。索引方式：api/fts.php =====
+  function grepRow(cls, html) { return '<div class="' + cls + '">' + html + '</div>'; }
+
+  function renderGrepResults(d) {
+    var html = '<div class="uh-head">本文検索「' + esc(d.q) + '」 一致 ' + d.hits.length + '件'
+      + (d.truncated ? '（多すぎるため一部のみ）' : '') + '　クリックで開く</div>';
+    if (!d.hits.length) html += grepRow('uh-head', '一致するファイルはありません');
+    d.hits.forEach(function (h) {
+      html += '<div class="uh-item" data-path="' + esc(h.path) + '" title="' + esc(h.path) + ':' + h.line + '">'
+        + '<span class="uh-icon">' + iconOf(baseName(h.path), false) + '</span>'
+        + '<span class="uh-name">' + esc(baseName(h.path)) + '</span>'
+        + '<span class="uh-dir">' + esc(h.text) + '</span>'
+        + '</div>';
+    });
+    histEl.innerHTML = html;
+    histEl.style.display = 'block';
+    histSel = -1;
+  }
+
+  function runGrepBuild(q) {
+    fetch('api/fts.php?op=build&t=' + Date.now())
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.remaining > 0) {
+          histEl.innerHTML = grepRow('uh-head',
+            '本文の索引を作成中… 残り ' + d.remaining + ' ファイル（初回だけ時間がかかります）');
+          histEl.style.display = 'block';
+          runGrepBuild(q);
+        } else {
+          runGrep(q);
+        }
+      })
+      .catch(function () {
+        histEl.innerHTML = grepRow('uh-head', '索引の作成に失敗しました');
+      });
+  }
+
+  // 検索を速く保つため、索引の鮮度合わせ（フォルダ走査）は裏で静かに行う。
+  // 検索のたびに1回だけ起動し、残りが無くなるまで回す（画面には出さない）。
+  var grepBgBusy = false;
+  function grepBgRefresh() {
+    if (grepBgBusy) return;
+    grepBgBusy = true;
+    (function step(rounds) {
+      fetch('api/fts.php?op=build&t=' + Date.now())
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.remaining > 0 && rounds < 30) step(rounds + 1);
+          else grepBgBusy = false;
+        })
+        .catch(function () { grepBgBusy = false; });
+    })(0);
+  }
+
+  function runGrep(q) {
+    histEl.innerHTML = grepRow('uh-head', '本文を検索中…');
+    histEl.style.display = 'block';
+    fetch('api/fts.php?op=search&q=' + encodeURIComponent(q) + '&t=' + Date.now())
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.need_build) { runGrepBuild(q); return; }
+        if (d.error) { histEl.innerHTML = grepRow('uh-head', '検索できません: ' + esc(d.error)); return; }
+        renderGrepResults(d);
+        grepBgRefresh();
+      })
+      .catch(function () { histEl.innerHTML = grepRow('uh-head', '本文検索に失敗しました'); });
+  }
 
   // ===== 編集機能 =====
   function exitEdit() {

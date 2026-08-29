@@ -15,5 +15,8 @@ api/roots.php
 # 使う人ごとのAI運用設定（各自のものを置く）
 CLAUDE.md
 
+# PlantUML描画エンジン（大きいバイナリ。各環境で1回だけ取得する。入手方法はROADMAP/設計書参照）
+api/bin/
+
 # 旧ビューアの残骸（未使用）
 css/
