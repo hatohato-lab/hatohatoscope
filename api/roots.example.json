@@ -1,0 +1,10 @@
+[
+  {
+    "_comment": "Flask版(server.py)の追加閲覧フォルダの見本。roots.json という名前でコピーして使う（git 管理外）。読み取り専用。",
+    "name": "表示名",
+    "path": "C:/path/to/extra/folder",
+    "maxDepth": 4,
+    "exclude": [".git", "node_modules"],
+    "excludeFiles": []
+  }
+]

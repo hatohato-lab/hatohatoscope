@@ -10,8 +10,8 @@ thousands of files, Markdown + Mermaid rendering, inline editing — served only
 `localhost` by design.
 
 ブラウザひとつで、作業フォルダ全体を「見る・探す・開く・直す」ための1枚もののビューアです。
-標準では XAMPP（Apache + PHP）で動きますが、サーバー側は小さな窓口が3つあるだけなので、
-Flask など他の環境にも移植できます（後述「他の環境で動かす」）。**localhost 専用**に設計されています。
+サーバーは **Python + Flask（同梱の server.py・推奨）** か **XAMPP（Apache + PHP）** のどちらでも動きます。
+画面（all.html）は共通です。**localhost 専用**に設計されています。
 
 ## なぜ作ったか — AIが増やす情報量と、増えない人間の認知
 
@@ -86,31 +86,44 @@ flowchart LR
 
 > この README を読んで、このビューアを私の環境にセットアップして。
 
-### セットアップ手順（Claude Code への指示。人間が手で行う場合も同じ）
+### 方法A: Flask（推奨・いちばん簡単）
 
-1. **環境の確認** — ローカルでPHPが動くWebサーバーがあるか確認する。
-   - XAMPP 等（Apache + PHP）があればそれを使う
-   - 無ければ、下の「他の環境で動かす」のAPI仕様どおりに、その環境にあるスタック
-     （Python / Node 等）でサーバー部を生成して構わない
-2. **配置** — このフォルダをWebサーバーの公開フォルダ配下に置く（またはシンボリックリンク＋Alias）
-3. **設定の作成** — `api/config.example.php` を `api/config.php` にコピーし、
+```
+git clone https://github.com/hatohato-lab/hatohatoscope.git
+cd hatohatoscope
+copy api\config.example.json api\config.json   # root を自分の作業フォルダに書き換える
+pip install flask
+python server.py
+```
+
+ブラウザで `http://localhost:8765/all.html` を開けば完了。
+追加の閲覧フォルダが必要なら `api/roots.example.json` → `api/roots.json` も同様に作る。
+
+### 方法B: XAMPP（Apache + PHP）
+
+1. **配置** — このフォルダをWebサーバーの公開フォルダ配下に置く（またはシンボリックリンク＋Alias）
+2. **設定の作成** — `api/config.example.php` を `api/config.php` にコピーし、
    `root`（表示したい作業フォルダ）を利用者に確認して書き込む。
    追加の閲覧フォルダが必要なら `api/roots.example.php` → `api/roots.php` も同様に作る
-4. **セキュリティ確認（必須）** — サーバーの待受が loopback（127.0.0.1 / ::1）限定であることを
+3. **セキュリティ確認（必須）** — サーバーの待受が loopback（127.0.0.1 / ::1）限定であることを
    実測で確認する（`netstat` 等）。全インターフェース待受（0.0.0.0）なら必ず直す（下の⚠️参照）
-5. **PlantUML図の描画（任意）** — .puml をその場で図にしたい場合は、Java を入れたうえで
-   公式配布の plantuml.jar を `api/bin/plantuml.jar` に置く（無くても他機能は動く。
-   その場合 .puml はソース表示になる）
-6. **動作確認（これが完了条件）** — 次のすべてが通ったら完了：
-   - `http://localhost/…/all.html` でツリーが表示される
-   - ファイル名の一部を入力すると検索候補が出る
-   - Markdownファイルが（Mermaid図ごと）描画される
-   - LAN側アドレスからはポートに到達できない
 
-## 他の環境で動かす（Flask・Node など）
+### 共通の追加設定と動作確認
 
-画面（all.html）は静的な1枚もので、PHPには依存していません。
-サーバーに求めるのは次の3エンドポイントだけです。同じ仕様で実装すれば、どのスタックでも動きます。
+- **PlantUML図の描画（任意）** — .puml をその場で図にしたい場合は、Java を入れたうえで
+  公式配布の plantuml.jar を `api/bin/plantuml.jar` に置く（無くても他機能は動く。
+  その場合 .puml はソース表示になる）
+- **動作確認（これが完了条件）** — 次のすべてが通ったら完了：
+  - all.html でツリーが表示される
+  - ファイル名の一部を入力すると検索候補が出る
+  - Markdownファイルが（Mermaid図ごと）描画される
+  - LAN側アドレスからはポートに到達できない
+
+## 他の環境で動かす（Node など）
+
+画面（all.html）は静的な1枚もので、サーバーの言語には依存していません。
+Python 版の実装は同梱の `server.py`（Flask）がそのまま参照実装になります。
+サーバーに求める主な仕様は次の3エンドポイントです。同じ仕様で実装すれば、どのスタックでも動きます。
 
 | エンドポイント | 入力 | 返すもの |
 |---|---|---|

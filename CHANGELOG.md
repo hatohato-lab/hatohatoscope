@@ -3,6 +3,8 @@
 READMEは「今の姿」、このファイルは「変わってきた道筋」を書く。新しい日付を上に足す。
 
 ## 2026-08-30
+- Flask版サーバー（server.py）を同梱：Python + Flask だけで全機能が動く（ツリー・配信・保存・git差分/色つけ・全文検索・PlantUML）。設定は api/config.example.json をコピーして作る
+- READMEのセットアップを「方法A: Flask（推奨）／方法B: XAMPP」の2本立てに変更。Flaskは clone→copy→pip install flask→python server.py の4手で導入できる
 - 左の絞り込み欄からも本文検索できるようにした（入力すると欄の下に「🔎 本文を検索」ボタンが出る。名前で0件でも中身から探せる）
 - 全文検索を追加：検索欄の候補の最後に「🔎 本文を検索」が出て、Markdown/HTMLの中身から探せる（約5,900ファイルを0.3秒。初回だけ索引作成に数分）
 - 索引は一時フォルダに置き、機密フォルダ（config の ftsExcludeFolders）は絶対に含めない
