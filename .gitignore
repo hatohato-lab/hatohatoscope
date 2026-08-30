@@ -22,3 +22,6 @@ api/bin/
 
 # 旧ビューアの残骸（未使用）
 css/
+
+# Python実行時の生成物
+__pycache__/
