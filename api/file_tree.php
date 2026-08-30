@@ -155,6 +155,15 @@ if ($rootMode) {
     }
 }
 
+// まとまり順ソート用：地図ファイル（フォルダ→意味のまとまり対応表）の場所を画面へ伝える。
+// ローカル設定に書いた環境だけで有効。設定が無ければ何も足さず、従来どおり名前順のみ。
+if (isset($config['mapFile']) && is_file($config['mapFile'])) {
+    $tree['mapFile'] = str_replace('/', '\\', $config['mapFile']);
+    if (isset($config['mapGroupOrder']) && is_array($config['mapGroupOrder'])) {
+        $tree['mapGroupOrder'] = $config['mapGroupOrder'];
+    }
+}
+
 $json = json_encode($tree, JSON_UNESCAPED_UNICODE);
 if ($rootMode) { @file_put_contents($cacheFile, $json); header('X-Cache: MISS'); }  // 全体モードのみキャッシュ更新
 echo $json;

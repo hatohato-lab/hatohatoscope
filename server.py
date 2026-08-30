@@ -155,6 +155,12 @@ def file_tree():
                                        int(er.get('maxDepth', 4)), 0,
                                        er.get('excludeFiles', [])),
         })
+    # まとまり順ソート用：地図ファイルの場所を画面へ伝える（ローカル設定がある環境だけ）
+    map_file = config.get('mapFile')
+    if map_file and os.path.isfile(map_file):
+        tree['mapFile'] = map_file.replace('/', '\\')
+        if isinstance(config.get('mapGroupOrder'), list):
+            tree['mapGroupOrder'] = config['mapGroupOrder']
     body = json.dumps(tree, ensure_ascii=False)
     try:
         with open(TREE_CACHE, 'w', encoding='utf-8') as f:

@@ -149,6 +149,9 @@
   /* ===== ブックマーク ===== */
   .bm-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
   .bm-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px; }
+  /* まとまり順ソート時の、まとまり見出し行 */
+  .tree-group-head { font-size: 12px; font-weight: bold; color: #000; background: #ebebeb;
+    padding: 3px 8px; margin: 8px 0 3px; border-radius: 3px; }
   /* 左の絞り込み欄の下に出す「本文を検索」ボタン行 */
   .tree-grep { display: none; padding: 6px 8px; margin: 4px 0; border: 1px solid #bbb; border-radius: 4px;
     cursor: pointer; font-size: 13px; color: #000; background: #f7f7f7; }
@@ -186,6 +189,7 @@
     <div class="menu-header">
       <div class="title-row">
         <div class="title">作業フォルダ全体</div>
+        <button id="sortBtn" style="display:none;" title="ツリーの並びを「名前順」と「意味のまとまり順」で切り替える">並び:名前</button>
         <button id="reloadBtn" title="フォルダを再スキャンしてツリーを最新にする">更新</button>
       </div>
       <input type="text" id="searchInput" placeholder="ファイル名で絞り込み...">
@@ -663,13 +667,85 @@
     });
   }
 
+  // ===== まとまり順ソート（設定の地図ファイル＝フォルダ→意味のまとまり対応表で並べ替える） =====
+  // 実体のフォルダには一切触らない。設定が無い環境ではボタンごと出ず、従来どおり名前順のみ。
+  var mapInfo = null;        // {groups: {フォルダ名: 番号}, labels: {番号: まとまり名}, order: [表示順]}
+  var mapFetchedFor = '';    // 取得済みの地図パス（二重取得防止）
+  var treeSortMode = 'name';
+  try { treeSortMode = localStorage.getItem('allViewerTreeSort') || 'name'; } catch (e) {}
+
+  function parseMapTable(text, groupOrder) {
+    var groups = {}, labels = {};
+    text.split('\n').forEach(function (line) {
+      var m = line.match(/^\|\s*(\d+)\s+([^|]*?)\s*\|\s*([^|]+?)\s*\|/);
+      if (!m) return;
+      var no = parseInt(m[1], 10), label = m[2], folder = m[3];
+      if (!folder || folder.indexOf('---') >= 0 || folder === 'フォルダ') return;
+      groups[folder] = no;
+      if (!labels[no]) labels[no] = label;
+    });
+    if (!Object.keys(groups).length) return null;
+    var order = (groupOrder && groupOrder.length) ? groupOrder.slice()
+              : Object.keys(labels).map(Number).sort(function (a, b) { return a - b; });
+    return { groups: groups, labels: labels, order: order };
+  }
+
+  function updateSortBtn() {
+    document.getElementById('sortBtn').textContent = (treeSortMode === 'map') ? '並び:意味' : '並び:名前';
+  }
+
+  function loadMap(data) {
+    if (!data.mapFile || data.mapFile === mapFetchedFor) return;
+    mapFetchedFor = data.mapFile;
+    fetch('serve.php?p=' + encodeURIComponent(data.mapFile) + '&t=' + Date.now())
+      .then(function (r) { return r.text(); })
+      .then(function (t) {
+        mapInfo = parseMapTable(t, data.mapGroupOrder);
+        if (mapInfo) {
+          document.getElementById('sortBtn').style.display = 'inline-block';
+          updateSortBtn();
+          if (treeSortMode === 'map' && lastTreeJson) renderTree(JSON.parse(lastTreeJson), true);
+        }
+      })
+      .catch(function () {});
+  }
+
+  document.getElementById('sortBtn').addEventListener('click', function () {
+    treeSortMode = (treeSortMode === 'map') ? 'name' : 'map';
+    try { localStorage.setItem('allViewerTreeSort', treeSortMode); } catch (e) {}
+    updateSortBtn();
+    if (lastTreeJson) renderTree(JSON.parse(lastTreeJson), true);
+  });
+
+  // 最上位だけ、まとまりごとに見出しを挟んで並べ替える
+  function renderRoot(children) {
+    if (treeSortMode !== 'map' || !mapInfo) return render(children, 0);
+    var buckets = {}, others = [], rootFiles = [];
+    children.forEach(function (it) {
+      if (!it.children) { rootFiles.push(it); return; }
+      var no = mapInfo.groups[it.name];
+      if (no === undefined) { others.push(it); return; }
+      (buckets[no] = buckets[no] || []).push(it);
+    });
+    var html = '';
+    mapInfo.order.forEach(function (no) {
+      if (!buckets[no]) return;
+      html += '<div class="tree-group-head">' + no + ' ' + esc(mapInfo.labels[no] || '') + '</div>';
+      html += render(buckets[no], 0);
+    });
+    if (others.length) html += '<div class="tree-group-head">その他（地図に未記載）</div>' + render(others, 0);
+    if (rootFiles.length) html += '<div class="tree-group-head">ファイル</div>' + render(rootFiles, 0);
+    return html;
+  }
+
   function renderTree(data, keepScroll) {
     var menu = menuEl;
     var st = menu ? menu.scrollTop : 0;
     if (data.path) treeRootPath = data.path;
     flatIndex = [];
     buildIndex(data.children || []);
-    treeEl.innerHTML = render(data.children || [], 0);
+    loadMap(data);
+    treeEl.innerHTML = renderRoot(data.children || []);
     // 絞り込み中なら、描き直したツリーにも同じ絞り込みをかけ直す
     var q = searchInputEl.value.trim().toLowerCase();
     if (q) filterTree(treeEl, q);
@@ -1197,6 +1273,8 @@
   searchInputEl.addEventListener('input', function () {
     var q = this.value.trim().toLowerCase();
     var grepBar = document.getElementById('treeGrep');
+    // 絞り込み中はまとまり見出しを隠す（中身が消えた見出しだけ残ると紛らわしい）
+    treeEl.querySelectorAll('.tree-group-head').forEach(function (h) { h.style.display = q ? 'none' : ''; });
     if (!q) { restoreTreeDisplay(); grepBar.style.display = 'none'; return; }
     var any = filterTree(treeEl, q);
     // 名前で見つからなくても中身から探せるよう、絞り込み中は常に本文検索ボタンを出す

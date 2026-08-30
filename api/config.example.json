@@ -2,11 +2,24 @@
   "_comment": "Flask版(server.py)の環境設定の見本。config.json という名前でコピーして root を書き換える。config.json は git 管理外。",
   "root": "C:/Users/YOURNAME/Documents/workspace",
   "excludeFolders": [
-    ".git", "node_modules", "__pycache__", ".venv", "venv", "vendor",
-    ".next", "dist", "build", ".cache", ".pytest_cache", ".idea"
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "vendor",
+    ".next",
+    "dist",
+    "build",
+    ".cache",
+    ".pytest_cache",
+    ".idea"
   ],
   "maxDepth": 6,
   "ftsExcludeFolders": [],
   "denyFiles": [],
-  "port": 8765
+  "port": 8765,
+  "_comment_map": "任意: mapFile にフォルダ→まとまり対応表(Markdown表)のパスを書くと、ツリーに並び替えボタンが出る",
+  "mapFile": "",
+  "mapGroupOrder": []
 }
