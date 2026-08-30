@@ -189,7 +189,7 @@
     <div class="menu-header">
       <div class="title-row">
         <div class="title">作業フォルダ全体</div>
-        <button id="sortBtn" style="display:none;" title="ツリーの並びを「名前順」と「意味のまとまり順」で切り替える">並び:名前</button>
+        <button id="sortBtn" style="display:none;" title="ツリーの並びを「名前順」と「意味のまとまり順」で切り替える">まとまり順にする</button>
         <button id="reloadBtn" title="フォルダを再スキャンしてツリーを最新にする">更新</button>
       </div>
       <input type="text" id="searchInput" placeholder="ファイル名で絞り込み...">
@@ -691,7 +691,8 @@
   }
 
   function updateSortBtn() {
-    document.getElementById('sortBtn').textContent = (treeSortMode === 'map') ? '並び:意味' : '並び:名前';
+    // ラベルは「押したらどうなるか」を書く（現在状態の表示だと押してよいか分からないため）
+    document.getElementById('sortBtn').textContent = (treeSortMode === 'map') ? '名前順にする' : 'まとまり順にする';
   }
 
   function loadMap(data) {
