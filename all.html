@@ -79,6 +79,9 @@
   .uh-del { flex: 0 0 auto; width: 18px; text-align: center; color: #999; border-radius: 3px; }
   .uh-del:hover { background: #c00; color: #fff; }
   #copyBtn { flex: 0 0 auto; width: 30px; font-size: 14px; padding: 4px 0; cursor: pointer; text-align: center; }
+  #reopenBtn { flex: 0 0 auto; font-size: 12px; padding: 5px 8px; cursor: pointer; }
+  #reopenBtn:hover { background: #1b5e20; color: #fff; border-color: #1b5e20; }
+  #reopenBtn.done { background: #2e7d32; color: #fff; border-color: #2e7d32; }
   #diffBtn { flex: 0 0 auto; font-size: 12px; padding: 5px 8px; cursor: pointer; }
   #diffBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   #copyBtn.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
@@ -215,6 +218,7 @@
       </div>
       <button id="copyBtn" title="パスをコピー">📋</button>
       <button id="bmBtn" title="今のパスをブックマークに登録 / 解除">★</button>
+      <button id="reopenBtn" title="開いているファイルだけ読み直す（裏で書き換わった内容を反映。ページ全体は再読込しないのでツリーや位置は消えない）">再表示</button>
       <button id="diffBtn" title="このパスのgit差分を色つき表示">差分</button>
       <button id="editBtn" style="display:none;">編集</button>
       <button id="saveBtn" style="display:none;">保存</button>
@@ -899,6 +903,29 @@
       })
       .catch(function () { msg.style.color = '#c00'; msg.textContent = '差分の取得に失敗しました'; });
   }
+  // ===== 再表示（2026-09-02 追加） =====
+  // 裏で書き換わったファイルを、ページ全体を読み込み直さずに反映する。
+  // F5 だとツリーの開閉・スクロール・表示中ファイルがすべて消えてしまうため、
+  // 開いているファイルだけ openFile で読み直す（各分岐が毎回キャッシュ回避で取り直す作り）。
+  document.getElementById('reopenBtn').addEventListener('click', function () {
+    var btn = this;
+    var msg = document.getElementById('saveMsg');
+    if (!currentWin) {
+      msg.style.color = '#c00'; msg.textContent = '先にファイルを開いてから押してください';
+      return;
+    }
+    // 編集中に読み直すと、保存していない変更が消えるので確認する
+    if (editor.style.display !== 'none'
+        && !confirm('編集中です。保存していない変更は失われます。再表示しますか？')) return;
+    var menu = menuEl;
+    var st = menu ? menu.scrollTop : 0;   // ツリーの見ていた位置を保つ
+    openFile(currentWin);
+    if (menu) menu.scrollTop = st;
+    msg.textContent = '';
+    btn.classList.add('done');            // 押したことが分かるように一瞬だけ色を変える
+    setTimeout(function () { btn.classList.remove('done'); }, 600);
+  });
+
   document.getElementById('diffBtn').addEventListener('click', function () {
     var p = normPath(urlInput.value);
     var msg = document.getElementById('saveMsg');
