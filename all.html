@@ -52,6 +52,19 @@
   #reloadBtn:disabled { background: #9e9e9e; border-color: #9e9e9e; cursor: default; }
   .menu-header button { font-size: 14px; padding: 4px 8px; margin-right: 4px; cursor: pointer; }
   #searchInput { width: 100%; font-size: 15px; padding: 5px; margin-top: 6px; }
+  /* 本文検索（ファイル名検索とは別の専用欄。VS Codeの検索パネルに相当） */
+  #grepInput { width: 100%; font-size: 15px; padding: 5px; margin-top: 6px; }
+  .grep-panel { border: 1px solid #999; border-radius: 4px; margin-top: 6px; background: #fff; }
+  .grep-head { display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; font-weight: bold; padding: 5px 8px; background: #ebebeb; border-radius: 4px 4px 0 0; }
+  #grepClose { cursor: pointer; padding: 0 4px; font-size: 15px; }
+  #grepClose:hover { color: #c00; }
+  .grep-list { max-height: 45vh; overflow-y: auto; }
+  .grep-item { padding: 5px 8px; border-top: 1px solid #e0e0e0; cursor: pointer; }
+  .grep-item:hover { background: #eef3fb; }
+  .grep-item .gname { font-size: 14px; font-weight: bold; color: #0645ad; }
+  .grep-item .gdir { font-size: 11.5px; color: #555; }
+  .grep-item .gtext { font-size: 12.5px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .content { flex: 1; display: flex; flex-direction: column; }
   .url-bar { display: flex; align-items: center; padding: 6px; border-bottom: 1px solid #ccc; background: #fafafa; gap: 6px; }
   .url-wrap { position: relative; flex: 1; display: flex; }
@@ -196,6 +209,11 @@
         <button id="reloadBtn" title="フォルダを再スキャンしてツリーを最新にする">更新</button>
       </div>
       <input type="text" id="searchInput" placeholder="ファイル名で絞り込み...">
+      <input type="text" id="grepInput" placeholder="本文を検索（md・html）Enterで実行">
+      <div class="grep-panel" id="grepPanel" style="display:none;">
+        <div class="grep-head"><span id="grepHead"></span><span id="grepClose" title="結果を閉じる">×</span></div>
+        <div class="grep-list" id="grepList"></div>
+      </div>
       <div class="tree-grep" id="treeGrep" title="ファイルの中身から探す"></div>
       <div class="bm-box" id="bmBox" style="display:none;">
         <div class="bm-head">★ ブックマーク</div>
@@ -1533,22 +1551,31 @@
   });
 
   // ===== 全文検索（本文検索）。索引方式：api/fts.php =====
-  function grepRow(cls, html) { return '<div class="' + cls + '">' + html + '</div>'; }
+  // 入り口は左メニューの専用欄（#grepInput・Enterで実行）。ファイル名検索とは完全に別扱い。
+  // 結果は左の専用パネル（#grepPanel）に「ファイル名＋場所＋ヒット行」で一覧し、クリックで開く。
+  var grepPanelEl = document.getElementById('grepPanel');
+  var grepListEl = document.getElementById('grepList');
+  var grepHeadEl = document.getElementById('grepHead');
 
-  function renderGrepResults(d) {
-    var html = '<div class="uh-head">本文検索「' + esc(d.q) + '」 一致 ' + d.hits.length + '件'
-      + (d.truncated ? '（多すぎるため一部のみ）' : '') + '　クリックで開く</div>';
-    if (!d.hits.length) html += grepRow('uh-head', '一致するファイルはありません');
+  function grepMsg(text) {
+    grepPanelEl.style.display = 'block';
+    grepHeadEl.textContent = text;
+    grepListEl.innerHTML = '';
+  }
+
+  function renderGrepPanel(d) {
+    grepPanelEl.style.display = 'block';
+    grepHeadEl.textContent = '「' + d.q + '」 一致 ' + d.hits.length + '件'
+      + (d.truncated ? '（多すぎるため一部のみ）' : '');
+    var html = '';
     d.hits.forEach(function (h) {
-      html += '<div class="uh-item" data-path="' + esc(h.path) + '" title="' + esc(h.path) + ':' + h.line + '">'
-        + '<span class="uh-icon">' + iconOf(baseName(h.path), false) + '</span>'
-        + '<span class="uh-name">' + esc(baseName(h.path)) + '</span>'
-        + '<span class="uh-dir">' + esc(h.text) + '</span>'
+      html += '<div class="grep-item" data-path="' + esc(h.path) + '" title="' + esc(h.path) + '">'
+        + '<div class="gname">' + iconOf(baseName(h.path), false) + ' ' + esc(baseName(h.path)) + '</div>'
+        + '<div class="gdir">' + esc(bmRelDir(h.path)) + '</div>'
+        + '<div class="gtext">' + h.line + '行目: ' + esc(h.text) + '</div>'
         + '</div>';
     });
-    histEl.innerHTML = html;
-    histEl.style.display = 'block';
-    histSel = -1;
+    grepListEl.innerHTML = html || '<div class="grep-item">一致するファイルはありません</div>';
   }
 
   function runGrepBuild(q) {
@@ -1556,17 +1583,13 @@
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.remaining > 0) {
-          histEl.innerHTML = grepRow('uh-head',
-            '本文の索引を作成中… 残り ' + d.remaining + ' ファイル（初回だけ時間がかかります）');
-          histEl.style.display = 'block';
+          grepMsg('索引を作成中… 残り ' + d.remaining + ' ファイル（初回だけ時間がかかります）');
           runGrepBuild(q);
         } else {
-          runGrep(q);
+          runGrepPanel(q);
         }
       })
-      .catch(function () {
-        histEl.innerHTML = grepRow('uh-head', '索引の作成に失敗しました');
-      });
+      .catch(function () { grepMsg('索引の作成に失敗しました'); });
   }
 
   // 検索を速く保つため、索引の鮮度合わせ（フォルダ走査）は裏で静かに行う。
@@ -1586,19 +1609,36 @@
     })(0);
   }
 
-  function runGrep(q) {
-    histEl.innerHTML = grepRow('uh-head', '本文を検索中…');
-    histEl.style.display = 'block';
+  function runGrepPanel(q) {
+    q = (q || '').trim();
+    if (q.length < 2) { grepMsg('2文字以上で検索してください'); return; }
+    document.getElementById('grepInput').value = q;
+    hideHistory();   // 上の候補リストから来た場合は閉じる
+    grepMsg('「' + q + '」を検索中…');
     fetch('api/fts.php?op=search&q=' + encodeURIComponent(q) + '&t=' + Date.now())
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.need_build) { runGrepBuild(q); return; }
-        if (d.error) { histEl.innerHTML = grepRow('uh-head', '検索できません: ' + esc(d.error)); return; }
-        renderGrepResults(d);
+        if (d.error) { grepMsg('検索できません: ' + d.error); return; }
+        renderGrepPanel(d);
         grepBgRefresh();
       })
-      .catch(function () { histEl.innerHTML = grepRow('uh-head', '本文検索に失敗しました'); });
+      .catch(function () { grepMsg('本文検索に失敗しました'); });
   }
+  var runGrep = runGrepPanel;   // 旧呼び出し名の互換（候補リストの🔎・絞り込み欄下のボタンも同じ結果パネルに出す）
+
+  document.getElementById('grepInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); runGrepPanel(this.value); }
+    if (e.key === 'Escape') { grepPanelEl.style.display = 'none'; }
+  });
+  document.getElementById('grepClose').addEventListener('click', function () {
+    grepPanelEl.style.display = 'none';
+    grepListEl.innerHTML = '';
+  });
+  grepListEl.addEventListener('click', function (e) {
+    var item = e.target.closest('.grep-item');
+    if (item && item.dataset.path) openFile(item.dataset.path);
+  });
 
   // ===== 編集機能 =====
   function exitEdit() {
