@@ -34,6 +34,18 @@ if ($rootMode) {
 // 全体モード(all.html)はスキャンが重い(約9秒)。5分キャッシュで2回目以降を即時化する。
 // ?fresh=1 で強制再生成。カテゴリモード(index.html)はキャッシュしない。
 $cacheFile = sys_get_temp_dir() . '/mydocs_alltree_cache.json';
+
+// 増分スキャン用：フォルダごとの一覧（名前・種別・サイズ）を「フォルダの更新時刻」付きで覚える台帳。
+// フォルダ直下の増減・改名は更新時刻が変わるので検知できる。中身の編集では変わらないが、
+// 一覧（名前と種別）は不変なので正しい。sizeは画面未使用のため古くてもよい（2026-09-05 追加）。
+$DIRCACHE_FILE = sys_get_temp_dir() . '/hhscope_dircache.json';
+$GLOBALS['dirCache'] = [];
+$GLOBALS['dirCacheSeen'] = [];
+$GLOBALS['dirCacheDirty'] = false;
+if (is_file($DIRCACHE_FILE)) {
+    $dcTmp = json_decode(@file_get_contents($DIRCACHE_FILE), true);
+    if (is_array($dcTmp)) $GLOBALS['dirCache'] = $dcTmp;
+}
 $wantFresh = (isset($_GET['fresh']) && $_GET['fresh'] === '1');
 if ($rootMode && !$wantFresh && is_file($cacheFile) && (time() - @filemtime($cacheFile) < 300)) {
     header('X-Cache: HIT');
@@ -52,18 +64,38 @@ function scanDirectory($path, $excludeFolders, $guardLinks, $rootReal, $maxDepth
         return $result;
     }
 
-    $items = scandir($path);
+    // 台帳が有効なら scandir / is_dir / filesize を一切やり直さない（ここが増分の心臓部）
+    $mt = @filemtime($path);
+    if (isset($GLOBALS['dirCache'][$path]) && $GLOBALS['dirCache'][$path][0] === $mt) {
+        $list = $GLOBALS['dirCache'][$path][1];
+    } else {
+        $list = [];
+        $items = scandir($path);
+        if ($items !== false) {
+            foreach ($items as $item) {
+                if ($item === '.' || $item === '..') continue;
+                $fullPath = $path . '/' . $item;
+                if (is_dir($fullPath)) {
+                    $list[] = [$item, 1, 0];
+                } else {
+                    $sz = @filesize($fullPath); // リンク切れ等で失敗しても警告を出さない
+                    $list[] = [$item, 0, ($sz === false ? 0 : $sz)];
+                }
+            }
+        }
+        $GLOBALS['dirCache'][$path] = [$mt, $list];
+        $GLOBALS['dirCacheDirty'] = true;
+    }
+    $GLOBALS['dirCacheSeen'][$path] = 1;
 
     $folders = [];
     $files = [];
+    $sizeOf = [];
 
-    foreach ($items as $item) {
-        if ($item === '.' || $item === '..') continue;
+    foreach ($list as $ent) {
+        $item = $ent[0];
         if (in_array($item, $excludeFolders)) continue;
-
-        $fullPath = $path . '/' . $item;
-
-        if (is_dir($fullPath)) {
+        if ($ent[1]) {
             // セッションUUIDフォルダ（会話ログの入れ物）はノイズなので隠す
             if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $item)) continue;
             $folders[] = $item;
@@ -73,6 +105,7 @@ function scanDirectory($path, $excludeFolders, $guardLinks, $rootReal, $maxDepth
             // 指定の秘密ファイル等は隠す（.claude カテゴリ用。既定は空で従来通り）
             if (in_array($item, $excludeFiles, true)) continue;
             $files[] = $item;
+            $sizeOf[$item] = $ent[2];
         }
     }
 
@@ -112,8 +145,7 @@ function scanDirectory($path, $excludeFolders, $guardLinks, $rootReal, $maxDepth
             'path' => str_replace('/', '\\', $fullPath)
         ];
         if ($withSize) {
-            $sz = @filesize($fullPath); // リンク切れ等で失敗しても警告を出さない（JSON汚染防止）
-            $entry['size'] = ($sz === false ? 0 : $sz);
+            $entry['size'] = isset($sizeOf[$item]) ? $sizeOf[$item] : 0;   // 台帳の値（画面未使用のため古くてよい）
         }
         $result[] = $entry;
     }
@@ -162,6 +194,11 @@ if (isset($config['mapFile']) && is_file($config['mapFile'])) {
     if (isset($config['mapGroupOrder']) && is_array($config['mapGroupOrder'])) {
         $tree['mapGroupOrder'] = $config['mapGroupOrder'];
     }
+}
+
+// 増分スキャン台帳の保存（今回見に行かなかったフォルダ＝消えた分は落とす）
+if ($GLOBALS['dirCacheDirty'] || count($GLOBALS['dirCache']) !== count($GLOBALS['dirCacheSeen'])) {
+    @file_put_contents($DIRCACHE_FILE, json_encode(array_intersect_key($GLOBALS['dirCache'], $GLOBALS['dirCacheSeen'])));
 }
 
 $json = json_encode($tree, JSON_UNESCAPED_UNICODE);

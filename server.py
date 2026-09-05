@@ -81,29 +81,60 @@ def img(name):
 # ---------------------------------------------------------------- ツリー一覧
 
 TREE_CACHE = os.path.join(tempfile.gettempdir(), 'hhscope_py_alltree_cache.json')
+# 増分スキャン用の台帳：フォルダごとの一覧（名前・種別・サイズ）を「フォルダの更新時刻」付きで覚える。
+# 直下の増減・改名は更新時刻で検知できる。sizeは画面未使用のため古くてもよい（2026-09-05 追加）
+DIR_CACHE_FILE = os.path.join(tempfile.gettempdir(), 'hhscope_py_dircache.json')
 
 
-def scan_directory(path, exclude, max_depth, depth=0, exclude_files=()):
+def scan_directory(path, exclude, max_depth, depth=0, exclude_files=(), dcache=None, seen=None, dirty=None):
     result = []
-    if not os.path.isdir(path) or (max_depth > 0 and depth >= max_depth):
+    if dcache is None:
+        dcache, seen, dirty = {}, set(), [False]
+    if max_depth > 0 and depth >= max_depth:
         return result
     try:
-        items = sorted(os.listdir(path))
+        mt = os.path.getmtime(path)
     except OSError:
         return result
-    folders, files = [], []
-    for item in items:
-        if item in ('.', '..') or item in exclude:
+    ent = dcache.get(path)
+    if ent and ent[0] == mt:
+        listing = ent[1]
+    else:
+        # 台帳が古い時だけ実際に読み直す。os.scandir は一覧と同時に種別・サイズが取れて速い
+        listing = []
+        try:
+            with os.scandir(path) as it:
+                for e in it:
+                    try:
+                        if e.is_dir(follow_symlinks=True):
+                            listing.append([e.name, 1, 0])
+                        else:
+                            try:
+                                sz = e.stat().st_size
+                            except OSError:
+                                sz = 0
+                            listing.append([e.name, 0, sz])
+                    except OSError:
+                        continue
+        except OSError:
+            return result
+        listing.sort(key=lambda x: x[0])
+        dcache[path] = [mt, listing]
+        dirty[0] = True
+    seen.add(path)
+    folders, files, size_of = [], [], {}
+    for name, is_dir_flag, sz in listing:
+        if name in exclude:
             continue
-        full = path + '/' + item
-        if os.path.isdir(full):
-            if UUID_RE.match(item):
+        if is_dir_flag:
+            if UUID_RE.match(name):
                 continue
-            folders.append(item)
+            folders.append(name)
         else:
-            if item.endswith('.jsonl') or item in exclude_files:
+            if name.endswith('.jsonl') or name in exclude_files:
                 continue
-            files.append(item)
+            files.append(name)
+            size_of[name] = sz
     for item in folders:
         full = path + '/' + item
         # 価値ある深い枝(projects/memory)だけ深く辿る（PHP版と同じ特例）
@@ -111,15 +142,11 @@ def scan_directory(path, exclude, max_depth, depth=0, exclude_files=()):
         result.append({
             'name': item,
             'path': full.replace('/', '\\'),
-            'children': scan_directory(full, exclude, child_max, depth + 1, exclude_files),
+            'children': scan_directory(full, exclude, child_max, depth + 1, exclude_files, dcache, seen, dirty),
         })
     for item in files:
         full = path + '/' + item
-        try:
-            size = os.path.getsize(full)
-        except OSError:
-            size = 0
-        result.append({'name': item, 'path': full.replace('/', '\\'), 'size': size})
+        result.append({'name': item, 'path': full.replace('/', '\\'), 'size': size_of.get(item, 0)})
     return result
 
 
@@ -140,10 +167,19 @@ def file_tree():
     root = config['root']
     exclude = config.get('excludeFolders', ['.git', 'node_modules'])
     max_depth = int(config.get('maxDepth', 6))
+    dcache, seen, dirty = {}, set(), [False]
+    if os.path.isfile(DIR_CACHE_FILE):
+        try:
+            with open(DIR_CACHE_FILE, encoding='utf-8') as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                dcache = loaded
+        except (OSError, ValueError):
+            pass
     tree = {
         'name': os.path.basename(root.rstrip('/')),
         'path': root.replace('/', '\\'),
-        'children': scan_directory(root.rstrip('/'), exclude, max_depth),
+        'children': scan_directory(root.rstrip('/'), exclude, max_depth, 0, (), dcache, seen, dirty),
     }
     for er in load_roots():
         if 'path' not in er or not os.path.isdir(er['path']):
@@ -153,8 +189,15 @@ def file_tree():
             'path': er['path'].replace('/', '\\'),
             'children': scan_directory(er['path'].rstrip('/'), er.get('exclude', []),
                                        int(er.get('maxDepth', 4)), 0,
-                                       er.get('excludeFiles', [])),
+                                       er.get('excludeFiles', []), dcache, seen, dirty),
         })
+    # 台帳の保存（今回見に行かなかったフォルダ＝消えた分は落とす）
+    if dirty[0] or len(dcache) != len(seen):
+        try:
+            with open(DIR_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump({k: v for k, v in dcache.items() if k in seen}, f)
+        except OSError:
+            pass
     # まとまり順ソート用：地図ファイルの場所を画面へ伝える（ローカル設定がある環境だけ）
     map_file = config.get('mapFile')
     if map_file and os.path.isfile(map_file):
