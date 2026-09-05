@@ -184,13 +184,14 @@
   .bm-l1 { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
   /* 絵文字は字ごとに幅が違う。固定幅にしないと行ごとに名前の開始位置がずれる */
   .bm-item .uh-icon { flex: 0 0 18px; width: 18px; text-align: center; }
-  .bm-name { flex: 1 1 auto; font-size: 13px; font-weight: bold; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
+  /* min-width:0 が無いと、flexの子は中身より縮めず、長い名前が列幅を押し広げてパスの頭がずれる（2026-09-05 修正） */
+  .bm-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: bold; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
   /* 2行目のパスは、1行目の名前の真下から始める（18px + gap 5px） */
   .bm-dir { padding-left: 23px; font-size: 12px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-del { flex: 0 0 auto; width: 16px; text-align: center; color: #999; border-radius: 3px; }
   /* 下モードは横に広いので1行に戻し、名前とパスを別の列にして頭を揃える */
   .container.mode-bottom .bm-item { display: flex; align-items: center; gap: 12px; }
-  .container.mode-bottom .bm-l1 { flex: 0 0 280px; }
+  .container.mode-bottom .bm-l1 { flex: 0 0 280px; min-width: 0; max-width: 280px; overflow: hidden; }
   .container.mode-bottom .bm-dir { flex: 1 1 auto; }
   .bm-del:hover { background: #c00; color: #fff; }
   #bmBtn { flex: 0 0 auto; font-size: 14px; padding: 4px 7px; cursor: pointer; }
