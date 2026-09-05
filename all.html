@@ -672,6 +672,10 @@
 
   var lastTreeJson = '';   // 直前に描画したツリーのJSON文字列（裏スキャン後の差分検知用）
   var pendingRevealPath = '';  // パス入力で開いたが、ツリー未反映で展開できなかったファイル（再スキャン後に一番上へ出す）
+  var refreshQueued = false;   // スキャン実行中に来た再スキャン依頼を捨てず、終わり次第もう1回走らせる
+  var scanSeq = 0;             // スキャンの通し番号（開始ごとに+1）
+  var renderScanSeq = 0;       // いま描画中のツリーが、どの番号のスキャン結果か
+  var pendingSeq = 0;          // pendingRevealPath は、この番号以降のスキャン結果で判定する
   var refreshing = false;  // 裏スキャンの多重起動防止
   var lastRefreshAt = 0;   // 直近のスキャン時刻（フォーカスのたびに走らせないため）
 
@@ -781,7 +785,9 @@
     var revealedNow = false;
     if (pendingRevealPath) {
       revealedNow = revealInTree(pendingRevealPath);
-      pendingRevealPath = '';   // 1回の再スキャンで見つからなければ諦める（除外対象など）
+      // 依頼より前に始まっていた古いスキャンの結果で「無い」と判定しない。
+      // 依頼後に始まったスキャンでも見つからなければ諦める（除外対象など）
+      if (revealedNow || renderScanSeq >= pendingSeq) pendingRevealPath = '';
     }
     if (!revealedNow && currentWin) revealInTree(currentWin);
     // 裏の自動更新では、見ていた位置が飛ばないようスクロールを元に戻す
@@ -878,19 +884,22 @@
   var afterRefresh = null;  // 再スキャン完了後に1回だけ実行する処理（フォルダ展開など）
   function refreshTree(after) {
     if (after) afterRefresh = after;
-    if (refreshing) return;
+    // 実行中なら依頼を捨てず順番待ちにする（走っている古いスキャンには、いま作ったファイルが入っていないため）
+    if (refreshing) { refreshQueued = true; return; }
     refreshing = true;
     lastRefreshAt = Date.now();
+    var mySeq = ++scanSeq;
     var btn = reloadBtnEl;
     btn.disabled = true; btn.textContent = '更新中…';
     fetch(API + '&fresh=1&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
       var data = JSON.parse(t);
-      if (!data.error && t !== lastTreeJson) { lastTreeJson = t; renderTree(data, true); }
+      if (!data.error && t !== lastTreeJson) { lastTreeJson = t; renderScanSeq = mySeq; renderTree(data, true); }
     }).catch(function () {}).then(function () {
       refreshing = false;
       btn.disabled = false; btn.textContent = '更新';
       var fn = afterRefresh; afterRefresh = null;
       if (fn) fn();
+      if (refreshQueued) { refreshQueued = false; refreshTree(); }
     });
   }
 
@@ -1060,7 +1069,7 @@
         urlInput.value = p;
         openFile(p);
         // 作った直後のファイルはツリーにまだ無いことがある。見つからなければ裏で再スキャンして出す
-        if (!revealInTree(p)) { pendingRevealPath = p; refreshTree(); }
+        if (!revealInTree(p)) { pendingRevealPath = p; pendingSeq = scanSeq + 1; refreshTree(); }
         msg.textContent = '';
       } else {
         r.text().then(function (t) {
