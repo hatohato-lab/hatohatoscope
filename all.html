@@ -671,6 +671,7 @@
   }
 
   var lastTreeJson = '';   // 直前に描画したツリーのJSON文字列（裏スキャン後の差分検知用）
+  var pendingRevealPath = '';  // パス入力で開いたが、ツリー未反映で展開できなかったファイル（再スキャン後に一番上へ出す）
   var refreshing = false;  // 裏スキャンの多重起動防止
   var lastRefreshAt = 0;   // 直近のスキャン時刻（フォーカスのたびに走らせないため）
 
@@ -775,9 +776,16 @@
     if (q) filterTree(treeEl, q);
     // ツリーが出来た後に、今開いているファイルを選択状態にし直す。
     // （?open= やパス入力は、ツリー読込より先に走ることがあり、その時点では項目が無くて空振りするため）
-    if (currentWin) revealInTree(currentWin);
+    // パス入力で開いたが再スキャン待ちだったファイルは、ここで初めて見つかる。
+    // その場合はスクロール復元をせず、そのファイルを一番上に出す（2026-09-05 修正）
+    var revealedNow = false;
+    if (pendingRevealPath) {
+      revealedNow = revealInTree(pendingRevealPath);
+      pendingRevealPath = '';   // 1回の再スキャンで見つからなければ諦める（除外対象など）
+    }
+    if (!revealedNow && currentWin) revealInTree(currentWin);
     // 裏の自動更新では、見ていた位置が飛ばないようスクロールを元に戻す
-    if (keepScroll && menu) menu.scrollTop = st;
+    if (keepScroll && menu && !revealedNow) menu.scrollTop = st;
     // 作業フォルダの最上位が分かってから、ブックマークのパス表示を短縮し直す
     renderBookmarks();
     markTreeBookmarks();
@@ -1052,7 +1060,7 @@
         urlInput.value = p;
         openFile(p);
         // 作った直後のファイルはツリーにまだ無いことがある。見つからなければ裏で再スキャンして出す
-        if (!revealInTree(p)) refreshTree();
+        if (!revealInTree(p)) { pendingRevealPath = p; refreshTree(); }
         msg.textContent = '';
       } else {
         r.text().then(function (t) {
