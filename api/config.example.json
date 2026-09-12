@@ -18,8 +18,5 @@
   "maxDepth": 6,
   "ftsExcludeFolders": [],
   "denyFiles": [],
-  "port": 8765,
-  "_comment_map": "任意: mapFile にフォルダ→まとまり対応表(Markdown表)のパスを書くと、ツリーに並び替えボタンが出る",
-  "mapFile": "",
-  "mapGroupOrder": []
+  "port": 8765
 }

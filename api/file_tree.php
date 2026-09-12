@@ -187,15 +187,6 @@ if ($rootMode) {
     }
 }
 
-// まとまり順ソート用：地図ファイル（フォルダ→意味のまとまり対応表）の場所を画面へ伝える。
-// ローカル設定に書いた環境だけで有効。設定が無ければ何も足さず、従来どおり名前順のみ。
-if (isset($config['mapFile']) && is_file($config['mapFile'])) {
-    $tree['mapFile'] = str_replace('/', '\\', $config['mapFile']);
-    if (isset($config['mapGroupOrder']) && is_array($config['mapGroupOrder'])) {
-        $tree['mapGroupOrder'] = $config['mapGroupOrder'];
-    }
-}
-
 // 増分スキャン台帳の保存（今回見に行かなかったフォルダ＝消えた分は落とす）
 if ($GLOBALS['dirCacheDirty'] || count($GLOBALS['dirCache']) !== count($GLOBALS['dirCacheSeen'])) {
     @file_put_contents($DIRCACHE_FILE, json_encode(array_intersect_key($GLOBALS['dirCache'], $GLOBALS['dirCacheSeen'])));
