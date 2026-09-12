@@ -826,19 +826,11 @@
           dirs[k] = (cls === 'mod') ? 'mod' : (dirs[k] || 'new');
         }
       });
-      // 色つけと同時に、変更のある行へ差分ボタン（±）を出し入れする
+      // ±ボタンは 2026-09-12 に廃止（行に印が増えると階層が見づらくなるため。差分は上部の「差分」ボタンで見る）。
+      // 過去の描画で残っている±があれば剥がすだけにする。
       function syncDiffBtn(row, copyEl, cls) {
         var d = row.querySelector(':scope > .tree-d-btn') || (copyEl.nextElementSibling && copyEl.nextElementSibling.classList && copyEl.nextElementSibling.classList.contains('tree-d-btn') ? copyEl.nextElementSibling : null);
-        if (cls && !d) {
-          var b = document.createElement('span');
-          b.className = 'tree-d-btn';
-          b.dataset.path = copyEl.dataset.path;
-          b.title = '差分を表示';
-          b.textContent = '±';
-          copyEl.after(b);
-        } else if (!cls && d) {
-          d.remove();
-        }
+        if (d) d.remove();
       }
       treeEl.querySelectorAll('.tree-file').forEach(function (n) {
         var c = n.querySelector('.tree-c-copy');
