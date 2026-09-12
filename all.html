@@ -1459,16 +1459,9 @@
     return '.tree-c-copy[data-path="' + p.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
   }
   function markTreeBookmarks() {
+    // ツリー行への★印は 2026-09-12 に廃止（行に印が増えると段付き＝階層がずれて読みづらくなるため）。
+    // ブックマーク機能自体（上部★ボタン・一覧）はそのまま。残っている★があれば剥がすだけにする。
     treeEl.querySelectorAll('.tree-bm-star').forEach(function (s) { s.remove(); });
-    getBm().forEach(function (b) {
-      var c = null;
-      try { c = treeEl.querySelector(bmSelector(b.path)); } catch (e) { return; }
-      if (!c) return;
-      var star = document.createElement('span');
-      star.className = 'tree-bm-star';
-      star.textContent = '★';
-      c.parentNode.insertBefore(star, c);
-    });
   }
   function openBookmark(p) {
     if (isDirPath(p)) {
