@@ -128,6 +128,10 @@
   #viewer { flex: 1 1 0; min-width: 0; height: 100%; border: none; }
   .placeholder { flex: 1 1 0; min-width: 0; padding: 30px; color: #666; }
   #editor { flex: 1 1 0; min-width: 0; }
+  /* PDF の簡易表示（pdf.js）。枠の幅いっぱいにページを縦に並べる（2026-09-19 追加） */
+  #pdfPane { flex: 1 1 0; min-width: 0; overflow: auto; background: #6b6b6b; padding: 12px; }
+  #pdfPane canvas { display: block; margin: 0 auto 12px; background: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.45); }
+  .pdf-msg { color: #fff; font-size: 13px; margin: 0 0 8px; }
   /* フォルダは「浮いた帯」にしてファイル（ただの行）と一目で区別する */
   .tree-folder-name {
     cursor: pointer; display: flex; align-items: center;
@@ -265,6 +269,7 @@
     <div class="viewer-area">
       <div class="placeholder" id="placeholder">メニューからファイルを選ぶと、ここに表示されます。</div>
       <iframe id="viewer" style="display:none;"></iframe>
+      <div id="pdfPane" style="display:none;"></div>
       <div id="outlinePane"></div>
       <textarea id="editor" style="display:none;width:100%;height:100%;border:none;padding:12px;font-family:Consolas,monospace;font-size:14px;box-sizing:border-box;resize:none;"></textarea>
     </div>
@@ -272,6 +277,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- PDF の簡易表示用（Chrome の「PDFをダウンロードする」設定がオンでも枠の中に描けるようにする。2026-09-19） -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>
 (function () {
   // この all.html は http://localhost/mydocs/all.html で開く想定。
@@ -483,6 +490,7 @@
     // 編集モードを解除して閲覧に戻す
     exitEdit();
     iframe.style.display = 'block';
+    hidePdfPane();   // 直前がPDFの簡易表示なら消す（描画途中なら捨てる）
     // 編集可能な拡張子なら「編集」ボタンを出す
     document.getElementById('editBtn').style.display = (EDIT_EXT.indexOf(ext) >= 0) ? '' : 'none';
 
@@ -496,7 +504,19 @@
       }).catch(function () { iframe.srcdoc = errHtml('ファイル読込エラー'); });
       return;
     }
-    if (ext === '.pdf' || ext === '.html' || ext === '.htm') {
+    if (ext === '.pdf') {
+      // ブラウザ内蔵のPDF表示が使えるならそれに任せる（検索・印刷ができる）。
+      // Chrome の「PDFをダウンロードする」設定がオンだと内蔵表示が動かずダウンロード→Adobe等に飛ぶので、
+      // その場合は pdf.js で枠の中に描く（2026-09-19 本人指定「Adobeではなく簡易的に中に表示」）
+      if (navigator.pdfViewerEnabled !== false || !window.pdfjsLib) {
+        iframe.removeAttribute('srcdoc');
+        iframe.src = url + '&t=' + Date.now();
+        return;
+      }
+      showPdfInline(url + '&t=' + Date.now());
+      return;
+    }
+    if (ext === '.html' || ext === '.htm') {
       iframe.removeAttribute('srcdoc');
       iframe.src = url + '&t=' + Date.now();
       return;
@@ -553,6 +573,73 @@
       return;
     }
     iframe.removeAttribute('srcdoc'); iframe.src = url + '&t=' + Date.now();
+  }
+
+  // ===== PDF を枠の中に描く（pdf.js）。2026-09-19 追加 =====
+  // Chrome の「PDFをダウンロードする」設定がオンだと内蔵のPDF表示が使えないため、
+  // ページごとに canvas へ描いて縦に並べる（枠の幅いっぱい・簡易表示。文字の選択・検索は無し）
+  var PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  var pdfRenderSeq = 0;   // 別のファイルへ切り替えたら古い描画を捨てるための通し番号
+  function hidePdfPane() {
+    pdfRenderSeq++;
+    var pane = document.getElementById('pdfPane');
+    if (pane) { pane.style.display = 'none'; pane.innerHTML = ''; }
+  }
+  function showPdfInline(url) {
+    var pane = document.getElementById('pdfPane');
+    var seq = ++pdfRenderSeq;
+    iframe.style.display = 'none';
+    pane.style.display = 'block';
+    pane.innerHTML = '<div class="pdf-msg">PDFを読み込み中…</div>';
+    buildOutline();   // PDFには目次が無いので、前のファイルの目次を消す
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+    fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      // cMapUrl：日本語などの文字対応表（無いと CJK の字が抜ける）。standardFontDataUrl：埋め込みの無い標準フォントの代替
+      return pdfjsLib.getDocument({
+        data: buf,
+        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+        cMapPacked: true,
+        standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/'
+      }).promise;
+    }).then(function (pdf) {
+      if (seq !== pdfRenderSeq) return;
+      pane.innerHTML = '';
+      var head = document.createElement('div');
+      head.className = 'pdf-msg';
+      head.textContent = pdf.numPages + 'ページ（簡易表示。文字の選択・検索はできません）';
+      pane.appendChild(head);
+      var width = Math.max(200, pane.clientWidth - 24);
+      var dpr = window.devicePixelRatio || 1;
+      var chain = Promise.resolve();
+      for (var i = 1; i <= pdf.numPages; i++) {
+        (function (n) {
+          chain = chain.then(function () {
+            if (seq !== pdfRenderSeq) return;
+            return pdf.getPage(n).then(function (page) {
+              if (seq !== pdfRenderSeq) return;
+              var base = page.getViewport({ scale: 1 });
+              var vp = page.getViewport({ scale: width / base.width });
+              var canvas = document.createElement('canvas');
+              canvas.width = Math.floor(vp.width * dpr);
+              canvas.height = Math.floor(vp.height * dpr);
+              canvas.style.width = Math.floor(vp.width) + 'px';
+              canvas.style.height = Math.floor(vp.height) + 'px';
+              pane.appendChild(canvas);
+              var ctx = { canvasContext: canvas.getContext('2d'), viewport: vp };
+              if (dpr !== 1) ctx.transform = [dpr, 0, 0, dpr, 0, 0];
+              return page.render(ctx).promise;
+            });
+          });
+        })(i);
+      }
+      return chain;
+    }).catch(function (e) {
+      if (seq !== pdfRenderSeq) return;
+      pane.innerHTML = '<div class="pdf-msg">PDFを表示できませんでした（' + esc(String((e && e.message) || e)) + '）</div>';
+    });
   }
 
   function stripFrontmatter(md) {
