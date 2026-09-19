@@ -285,8 +285,10 @@
   // 表示対象のルートはサーバー側（api/config.php）で決まる。フロントはパスを持たない。
   var API = 'api/file_tree.php?root=1';
 
+  // 画像（枠の幅に収めて表示する。2026-09-19 追加：.jpeg 等が灰色で開けなかったため）
+  var IMG_EXT = ['.png','.jpg','.jpeg','.gif','.webp','.bmp','.ico'];
   var VIEW_EXT = ['.html','.htm','.md','.pdf','.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.ps1','.yml','.yaml','.svg','.puml','.diff','.patch',
-                  '.gitignore','.gitattributes','.editorconfig','.ini','.toml','.conf','.cfg','.log'];
+                  '.gitignore','.gitattributes','.editorconfig','.ini','.toml','.conf','.cfg','.log'].concat(IMG_EXT);
   var TEXT_EXT = ['.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.ps1','.yml','.yaml',
                   '.gitignore','.gitattributes','.editorconfig','.ini','.toml','.conf','.cfg','.log'];
 
@@ -563,6 +565,16 @@
         if (svg0) { pumlShow(svg0); return; }
         return pumlFallback();
       }).catch(function () { pumlFallback(); });
+      return;
+    }
+    if (IMG_EXT.indexOf(ext) >= 0) {
+      // 画像は枠の幅に収めて表示する（生のまま出すと原寸で横にはみ出す）。
+      // srcdoc は親ページと同じ基点なので、相対URLの serve.php でそのまま届く
+      iframe.removeAttribute('src');
+      iframe.srcdoc = '<html><head><meta charset="UTF-8"></head>'
+        + '<body style="margin:0;padding:10px;background:#6b6b6b;text-align:center">'
+        + '<img src="' + esc(url + '&t=' + Date.now()) + '" style="max-width:100%;height:auto;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.45)">'
+        + '</body></html>';
       return;
     }
     if (TEXT_EXT.indexOf(ext) >= 0 || ext === '') {

@@ -70,6 +70,8 @@ $types = [
     'jpeg' => 'image/jpeg',
     'gif'  => 'image/gif',
     'webp' => 'image/webp',
+    'bmp'  => 'image/bmp',
+    'ico'  => 'image/x-icon',
     'pdf'  => 'application/pdf',
     // md / txt / py / php(ソースとして) / その他は text/plain で生表示
 ];
