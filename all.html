@@ -445,6 +445,10 @@
     if (!p) return;
     e.preventDefault();
     var wasOn = isBm(p);
+    // 意図せず消したり付けたりしないよう、必ず確認してから切り替える（2026-09-19 本人指定）
+    var ok = window.confirm((wasOn ? 'ブックマークから外しますか？' : 'ブックマークに登録しますか？')
+      + '\n\n' + baseName(p) + '\n' + bmRelDir(p));   // 場所は bmRelDir の文字そのまま（直下のときは既に括弧付き）
+    if (!ok) return;
     toggleBm(p);
     var msg = document.getElementById('saveMsg');
     if (msg) {
