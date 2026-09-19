@@ -166,6 +166,9 @@
   .tree-folder-name.git-mod > .tree-folder-label { color: #b45f06; }
   .tree-folder-name.git-new > .tree-folder-label { color: #2e7d32; }
   .tree-c-copy { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #888; background: #ececec; border: 1px solid #d5d5d5; border-radius: 3px; cursor: pointer; user-select: none; }
+  /* ブックマーク済みの行は c を黄色にして示す（2026-09-19 本人指定。上部の★ボタンの点灯色と同じ）。
+     hover と copied（コピー直後の✓）は後ろに書いて、その間だけ優先させる */
+  .tree-c-copy.bm-on { background: #f6b93b; color: #3a2e00; border-color: #d89b1c; }
   .tree-c-copy:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   .tree-c-copy.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
   /* 変更のある行に出る差分ボタン（±） */
@@ -1433,9 +1436,15 @@
     return '.tree-c-copy[data-path="' + p.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"]';
   }
   function markTreeBookmarks() {
-    // ツリー行への★印は 2026-09-12 に廃止（行に印が増えると段付き＝階層がずれて読みづらくなるため）。
-    // ブックマーク機能自体（上部★ボタン・一覧）はそのまま。残っている★があれば剥がすだけにする。
-    treeEl.querySelectorAll('.tree-bm-star').forEach(function (s) { s.remove(); });
+    // ブックマーク済みの行は、行頭の c（パスコピー）の色を黄色にして示す（2026-09-19 本人指定）。
+    // ★印のような要素を行に足すと段付き＝階層がずれるため（2026-09-12 に廃止）、既にある c の色だけ変える。
+    treeEl.querySelectorAll('.tree-bm-star').forEach(function (s) { s.remove(); });   // 旧★印の残りを剥がす
+    treeEl.querySelectorAll('.tree-c-copy.bm-on').forEach(function (c) { c.classList.remove('bm-on'); });
+    getBm().forEach(function (b) {
+      var c = null;
+      try { c = treeEl.querySelector(bmSelector(b.path)); } catch (e) { return; }
+      if (c) c.classList.add('bm-on');
+    });
   }
   // 登録時に保存した dir 印も見る（ツリー読込前に押されると isDirPath が false になり、ファイル扱いで失敗するため）
   function isBmDir(p) {
