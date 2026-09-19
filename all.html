@@ -103,12 +103,13 @@
   #diffBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   #copyBtn.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
   /* 開いているファイル名の帯（パス欄の下に常時表示。どの拡張子でも出す） */
-  .file-title { display: flex; align-items: baseline; gap: 10px; padding: 5px 10px;
-    background: #fff; border-bottom: 1px solid #ddd; white-space: nowrap; overflow: hidden; }
-  #fileTitleName { flex: 0 1 auto; font-size: 17px; font-weight: bold; color: #1a1a1a;
-    overflow: hidden; text-overflow: ellipsis; }
-  #fileTitleDir { flex: 1 1 auto; font-size: 12px; color: #555;
-    overflow: hidden; text-overflow: ellipsis; }
+  /* 1段目＝ファイル名、2段目＝場所（2026-09-19 変更。仕事側のビューアと同じ2段の形） */
+  .file-title { display: block; padding: 5px 10px;
+    background: #fff; border-bottom: 1px solid #ddd; overflow: hidden; }
+  #fileTitleName { display: block; font-size: 17px; font-weight: bold; color: #1a1a1a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #fileTitleDir { display: block; font-size: 12px; color: #555;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .viewer-area { flex: 1; position: relative; }
   /* 目次ペイン（開いたMarkdown/HTMLの見出し一覧。右側に重ねる） */
   #outlinePane { position: absolute; top: 0; right: 0; bottom: 0; width: 240px; overflow: auto;
@@ -179,21 +180,21 @@
   /* height（上限ではなく高さそのもの）を指定する。
      max-height だと中身の量までしか広がらず、ドラッグしても大きくならない（2026-08-28 修正） */
   .bm-list { height: 210px; overflow: auto; }
-  /* 1行目＝名前、2行目＝作業フォルダ以降のパス。どのフォルダの物か一目で分かるようにする */
-  .bm-item { padding: 3px 4px; cursor: pointer; border-bottom: 1px solid #e6e6e6; text-align: left; }
+  /* フォルダの入れ子で見せる（2026-09-19 変更。仕事側のビューアと同じ階層の形）。
+     段はパスの区切りごとに 14px ずつ下げる。フォルダ行は ▼📁、ファイル行は拡張子アイコン */
+  .bm-dir-row { display: flex; align-items: center; gap: 4px; padding: 2px 4px;
+    font-size: 12.5px; color: #333; white-space: nowrap; }
+  .bm-caret { flex: 0 0 auto; color: #888; font-size: 10px; }
+  .bm-folder { flex: 0 0 auto; }
+  .bm-dir-name { overflow: hidden; text-overflow: ellipsis; }
+  .bm-item { display: flex; align-items: center; gap: 5px; padding: 2px 4px;
+    cursor: pointer; text-align: left; white-space: nowrap; }
   .bm-item:hover { background: #e8e8e8; }
-  .bm-l1 { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
   /* 絵文字は字ごとに幅が違う。固定幅にしないと行ごとに名前の開始位置がずれる */
   .bm-item .uh-icon { flex: 0 0 18px; width: 18px; text-align: center; }
-  /* min-width:0 が無いと、flexの子は中身より縮めず、長い名前が列幅を押し広げてパスの頭がずれる（2026-09-05 修正） */
+  /* min-width:0 が無いと、flexの子は中身より縮めず、長い名前が列幅を押し広げて×印がずれる */
   .bm-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: bold; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
-  /* 2行目のパスは、1行目の名前の真下から始める（18px + gap 5px） */
-  .bm-dir { padding-left: 23px; font-size: 12px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bm-del { flex: 0 0 auto; width: 16px; text-align: center; color: #999; border-radius: 3px; }
-  /* 下モードは横に広いので1行に戻し、名前とパスを別の列にして頭を揃える */
-  .container.mode-bottom .bm-item { display: flex; align-items: center; gap: 12px; }
-  .container.mode-bottom .bm-l1 { flex: 0 0 280px; min-width: 0; max-width: 280px; overflow: hidden; }
-  .container.mode-bottom .bm-dir { flex: 1 1 auto; }
   .bm-del:hover { background: #c00; color: #fff; }
   #bmBtn { flex: 0 0 auto; font-size: 14px; padding: 4px 7px; cursor: pointer; }
   #bmBtn.on { background: #f6b93b; border-color: #d89b1c; color: #3a2e00; }
@@ -434,7 +435,7 @@
     if (!box) return;
     document.getElementById('fileTitleName').textContent = (prefix || '') + baseName(winPath);
     document.getElementById('fileTitleDir').textContent = bmRelDir(winPath);
-    box.style.display = 'flex';
+    box.style.display = 'block';   // 2段組みなので block（flexだと横並びに戻る）
   }
 
   function openFile(winPath) {
@@ -1354,25 +1355,43 @@
   function renderBookmarks() {
     var a = getBm();
     if (!a.length) { bmBoxEl.style.display = 'none'; bmListEl.innerHTML = ''; return; }
-    // 同じフォルダのものが隣り合うよう、フォルダ名 → 名前 の順に並べ替える
-    // （登録した順ではなく名前順。保存してある順序は変えない）
-    a = a.slice().sort(function (x, y) {
-      var c = bmRelDir(x.path).localeCompare(bmRelDir(y.path), 'ja');
-      if (c !== 0) return c;
-      return String(x.name).localeCompare(String(y.name), 'ja');
-    });
-    var html = '';
+    // フォルダの入れ子で見せる（2026-09-19 変更。仕事側のビューアと同じ階層の形）。
+    // 段はパス（作業フォルダ以降）の区切りで作る。作業フォルダの外は絶対パスのまま段にする。
+    var root = { dirs: {}, files: [] };
     a.forEach(function (b) {
-      html += '<div class="bm-item" data-path="' + esc(b.path) + '" title="' + esc(b.path) + '">'
-        + '<div class="bm-l1">'
-        + '<span class="uh-icon">' + iconOf(b.name, b.dir) + '</span>'
-        + '<span class="bm-name">' + esc(b.name) + '</span>'
-        + '<span class="bm-del" title="ブックマークから外す">×</span>'
-        + '</div>'
-        + '<div class="bm-dir">' + esc(bmRelDir(b.path)) + '</div>'
-        + '</div>';
+      var rel = bmRelDir(b.path);
+      var segs = (rel === '（作業フォルダの直下）') ? []
+        : rel.split(String.fromCharCode(92)).filter(function (t) { return t; });
+      var node = root;
+      segs.forEach(function (t) {
+        if (!node.dirs[t]) node.dirs[t] = { dirs: {}, files: [] };
+        node = node.dirs[t];
+      });
+      node.files.push(b);
     });
-    bmListEl.innerHTML = html;
+    function renderNode(node, depth) {
+      var pad = depth * 14 + 4;
+      var html = '';
+      Object.keys(node.dirs).sort(function (x, y) { return x.localeCompare(y, 'ja'); })
+        .forEach(function (name) {
+          html += '<div class="bm-dir-row" style="padding-left:' + pad + 'px">'
+            + '<span class="bm-caret">▼</span><span class="bm-folder">📁</span>'
+            + '<span class="bm-dir-name">' + esc(name) + '</span></div>'
+            + renderNode(node.dirs[name], depth + 1);
+        });
+      node.files.slice().sort(function (x, y) {
+        return String(x.name).localeCompare(String(y.name), 'ja');
+      }).forEach(function (b) {
+        html += '<div class="bm-item" data-path="' + esc(b.path) + '" title="' + esc(b.path) + '"'
+          + ' style="padding-left:' + pad + 'px">'
+          + '<span class="uh-icon">' + iconOf(b.name, b.dir) + '</span>'
+          + '<span class="bm-name">' + esc(b.name) + '</span>'
+          + '<span class="bm-del" title="ブックマークから外す">×</span>'
+          + '</div>';
+      });
+      return html;
+    }
+    bmListEl.innerHTML = renderNode(root, 0);
     bmBoxEl.style.display = 'block';
   }
   // 登録済みの行にだけ★印を付ける（件数が少ないので総なめしない）
