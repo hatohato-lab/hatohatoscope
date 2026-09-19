@@ -110,10 +110,12 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #fileTitleDir { display: block; font-size: 12px; color: #555;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .viewer-area { flex: 1; position: relative; }
-  /* 目次ペイン（開いたMarkdown/HTMLの見出し一覧。右側に重ねる） */
-  #outlinePane { position: absolute; top: 0; right: 0; bottom: 0; width: 240px; overflow: auto;
-    background: #fafafa; border-left: 1px solid #ddd; padding: 8px; display: none; z-index: 5; }
+  /* 本文と目次を横に並べる箱（2026-09-19 変更。目次を重ねずに左へ置くため flex にした） */
+  .viewer-area { flex: 1; position: relative; display: flex; min-height: 0; }
+  /* 目次ペイン（開いたMarkdown/HTMLの見出し一覧）。order:-1 で本文より左に出す。
+     重ねないので本文は残りの幅に収まる（DOMの位置は動かしていない） */
+  #outlinePane { order: -1; flex: 0 0 240px; overflow: auto;
+    background: #fafafa; border-right: 1px solid #ddd; padding: 8px; display: none; }
   .ol-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 6px; }
   .ol-item { font-size: 13px; padding: 2px 4px; cursor: pointer; color: #1a4f8a;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 3px; }
@@ -122,8 +124,10 @@
   .ol-l3 { padding-left: 30px; font-size: 12px; }
   #outlineBtn { flex: 0 0 auto; font-size: 12px; padding: 3px 8px; cursor: pointer; display: none; }
   #outlineBtn.on { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
-  #viewer { width: 100%; height: 100%; border: none; }
-  .placeholder { padding: 30px; color: #666; }
+  /* 本文側は残りの幅いっぱい。flex-basis:0 にして目次の有無で自動的に幅が決まるようにする */
+  #viewer { flex: 1 1 0; min-width: 0; height: 100%; border: none; }
+  .placeholder { flex: 1 1 0; min-width: 0; padding: 30px; color: #666; }
+  #editor { flex: 1 1 0; min-width: 0; }
   /* フォルダは「浮いた帯」にしてファイル（ただの行）と一目で区別する */
   .tree-folder-name {
     cursor: pointer; display: flex; align-items: center;
@@ -1522,9 +1526,18 @@
     var h = outlineTargets[parseInt(item.dataset.i, 10)];
     if (h && h.scrollIntoView) h.scrollIntoView({ block: 'start' });
   });
-  document.getElementById('outlineBtn').addEventListener('click', function () {
+  function toggleOutline() {
     try { localStorage.setItem(OUTLINE_KEY, outlineHidden() ? '0' : '1'); } catch (e) {}
     applyOutlineVisibility();
+  }
+  document.getElementById('outlineBtn').addEventListener('click', toggleOutline);
+  // F1 で目次の表示／非表示（2026-09-19 追加・本人指定のキー）。
+  // ブラウザ既定のヘルプ表示を preventDefault で止める。目次が無いファイルでは何もしない
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'F1' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+      e.preventDefault();
+      if (outlineTargets.length > 0) toggleOutline();
+    }
   });
 
   // ===== 全文検索（本文検索）。索引方式：api/fts.php =====
