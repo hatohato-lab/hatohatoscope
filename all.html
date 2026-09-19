@@ -1520,6 +1520,28 @@
     applyOutlineVisibility();
   }
   iframe.addEventListener('load', buildOutline);
+
+  // 本文の枠（iframe）の中にフォーカスがあると、外側のページはキー入力を受け取れない
+  // （本文をクリックした後に F1 を押しても目次が動かなかった原因。2026-09-19 実測）。
+  // 枠の中で F1 / Ctrl+B が押されたら、外側の document に同じキーを投げ直して同じ処理を通す。
+  // PDF など中身に触れない枠では何もしない
+  function hookIframeKeys() {
+    var doc = null;
+    try { doc = iframe.contentDocument; } catch (e) { return; }
+    if (!doc || doc.__hhKeysHooked) return;
+    doc.__hhKeysHooked = true;
+    doc.addEventListener('keydown', function (e) {
+      var isF1 = (e.key === 'F1' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey);
+      var isCtrlB = ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'b' || e.key === 'B'));
+      if (!isF1 && !isCtrlB) return;
+      e.preventDefault();   // ブラウザ既定（F1のヘルプ等）を枠の中で止める
+      document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey,
+        bubbles: true, cancelable: true
+      }));
+    });
+  }
+  iframe.addEventListener('load', hookIframeKeys);
   document.getElementById('outlinePane').addEventListener('click', function (e) {
     var item = e.target.closest('.ol-item');
     if (!item) return;
