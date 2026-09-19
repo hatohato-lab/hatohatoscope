@@ -1583,8 +1583,40 @@
         bubbles: true, cancelable: true
       }));
     });
+    // 本文の上で右クリック → クリップボードのパスを開く（2026-09-19 追加。下の openFromClipboard を参照）
+    doc.addEventListener('contextmenu', function (e) { e.preventDefault(); openFromClipboard(); });
   }
   iframe.addEventListener('load', hookIframeKeys);
+
+  // 本文（右側の表示エリア）の上で右クリックすると、クリップボードの文字をパス欄に入れて
+  // Enter と同じ動きにする（2026-09-19 追加・本人指定）。「貼る→Enter」の2手を1回にするのが目的。
+  // 手で貼ったときと同じ扱いなので、パスでない文字はファイル名検索になる。
+  // 本文の上ではブラウザの右クリックメニューは出さない（本人が了承。コピーは Ctrl+C）。
+  // 編集中の textarea と目次ペインは対象外（そこは通常の右クリックのまま）。
+  // クリップボードの読み取りはブラウザの許可が要る（localhost は安全な接続扱い。初回だけ確認が出る）
+  function openFromClipboard() {
+    var msg = document.getElementById('saveMsg');
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      msg.style.color = '#c00'; msg.textContent = 'このブラウザではクリップボードを読めません';
+      return;
+    }
+    navigator.clipboard.readText().then(function (t) {
+      t = (t || '').split(/\r?\n/)[0].trim();   // 複数行なら1行目だけ
+      if (!t) { msg.style.color = '#c00'; msg.textContent = 'クリップボードが空です'; return; }
+      urlInput.value = t;
+      updateClearBtn();
+      hideHistory();
+      openFromInput();
+    }).catch(function () {
+      msg.style.color = '#c00';
+      msg.textContent = 'クリップボードを読めませんでした（画面上部の「許可」を押すと以後は読めます）';
+    });
+  }
+  document.querySelector('.viewer-area').addEventListener('contextmenu', function (e) {
+    if (e.target.closest('#editor, #outlinePane')) return;   // 編集中の欄と目次は通常の右クリックのまま
+    e.preventDefault();
+    openFromClipboard();
+  });
   document.getElementById('outlinePane').addEventListener('click', function (e) {
     var item = e.target.closest('.ol-item');
     if (!item) return;
