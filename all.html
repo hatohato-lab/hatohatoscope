@@ -196,7 +196,7 @@
      フォルダ行は ▼📁、ファイル行は拡張子アイコン */
   .bm-children {
     margin-left: 8px; padding-left: 12px;
-    border-left: 1px solid #c4c4c4;   /* 階層の縦ガイド線（ツリー本体と同じ） */
+    border-left: 1px solid #d8c79a;   /* 階層の縦ガイド線。形はツリーと同じ・色だけ黄系 */
   }
   /* 縦線から各項目へ伸びる横線 */
   .bm-children > .bm-dir-row,
@@ -204,21 +204,30 @@
   .bm-children > .bm-dir-row::before,
   .bm-children > .bm-item::before {
     content: ''; position: absolute; left: -12px; top: 50%;
-    width: 9px; height: 1px; background: #c4c4c4;
+    width: 9px; height: 1px; background: #d8c79a;
   }
-  .bm-dir-row { display: flex; align-items: center; gap: 4px; padding: 2px 4px;
-    font-size: 12.5px; color: #333; white-space: nowrap; cursor: pointer; }
-  .bm-dir-row:hover { background: #e8e8e8; }
-  .bm-caret { flex: 0 0 auto; color: #888; font-size: 10px; }
+  /* 行の形は下のツリー（エクスプローラ）と同じにし、色だけ少し変えてブックマーク欄だと分かるようにする
+     （2026-09-20 本人指定）。フォルダは「浮いた帯」、ファイルはただの行。帯の色は★の黄色に寄せた薄い色 */
+  .bm-dir-row {
+    cursor: pointer; display: flex; align-items: center; gap: 4px;
+    padding: 3px 6px; margin: 2px 0;
+    user-select: none; white-space: nowrap;
+    background: #fdf3dd; border: 1px solid #efdfb8; border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+    font-weight: 600; color: #3a2e00;
+  }
+  .bm-dir-row:hover { background: #f8e6b8; border-color: #e0c98a; }
+  .bm-caret { flex: 0 0 auto; color: #a08a4a; font-size: 10px; }
   .bm-folder { flex: 0 0 auto; }
-  .bm-dir-name { overflow: hidden; text-overflow: ellipsis; }
-  .bm-item { display: flex; align-items: center; gap: 5px; padding: 2px 4px;
+  .bm-dir-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+  .bm-item { display: flex; align-items: center; gap: 5px; padding: 2px 0 2px 2px;
     cursor: pointer; text-align: left; white-space: nowrap; }
-  .bm-item:hover { background: #e8e8e8; }
+  .bm-item:hover { background: #f4ead3; }
   /* 絵文字は字ごとに幅が違う。固定幅にしないと行ごとに名前の開始位置がずれる */
   .bm-item .uh-icon { flex: 0 0 18px; width: 18px; text-align: center; }
   /* min-width:0 が無いと、flexの子は中身より縮めず、長い名前が列幅を押し広げて×印がずれる */
-  .bm-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: bold; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
+  /* ファイル名はツリーの行と同じ見た目（太字にしない）。色だけ少し濃くしてブックマーク欄と分かるようにする */
+  .bm-name { flex: 1 1 auto; min-width: 0; color: #12406f; overflow: hidden; text-overflow: ellipsis; }
   .bm-del { flex: 0 0 auto; width: 16px; text-align: center; color: #999; border-radius: 3px; }
   .bm-del:hover { background: #c00; color: #fff; }
   #bmBtn { flex: 0 0 auto; font-size: 14px; padding: 4px 7px; cursor: pointer; }
