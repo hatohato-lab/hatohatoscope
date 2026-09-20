@@ -446,28 +446,94 @@
   }
   treeEl.addEventListener('click', onTreeClick);  // 1回だけ登録（reloadでも重複しない）
 
-  // 右クリックでブックマークの登録／解除を切り替える（2026-09-19 追加）。
-  // ファイル行・フォルダ行のどちらでも効く。行の上ではブラウザの右クリックメニューを出さない。
-  // 結果は上のパス欄の右のメッセージ欄に2秒だけ出す（ブックマーク欄が画面外でも分かるように）
+  // ===== ツリーの右クリックメニュー（2026-09-20。以前は右クリック即ブックマーク切替だった） =====
+  // メニューを1枚挟むことで「間違えて右クリックした」だけでは何も起きない（外側クリック・Escで消える）。
+  // メニューはツリーと同じ文書に作る（メニューを別窓へ切り離しているときも同じ窓に出すため）。
+  // 見た目は CSS クラスに頼らず inline で書く（切り離し先の窓にこのページのCSSが無くても崩れない）
+  var ctxCleanup = null;
+  function closeCtxMenu() {
+    if (ctxCleanup) { ctxCleanup(); ctxCleanup = null; }
+  }
+  function showCtxMenu(doc, x, y, items) {
+    closeCtxMenu();
+    var box = doc.createElement('div');
+    box.style.cssText = 'position:fixed;z-index:9999;background:#fff;border:1px solid #999;border-radius:4px;'
+      + 'box-shadow:0 2px 8px rgba(0,0,0,.25);padding:4px 0;font-size:13px;min-width:200px;color:#000;';
+    box.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });   // 外側クリック判定に拾わせない
+    items.forEach(function (it) {
+      var row = doc.createElement('div');
+      row.textContent = it.label;
+      row.style.cssText = 'padding:6px 14px;cursor:pointer;white-space:nowrap;';
+      row.addEventListener('mouseenter', function () { row.style.background = '#e8eefc'; });
+      row.addEventListener('mouseleave', function () { row.style.background = ''; });
+      row.addEventListener('click', function () { closeCtxMenu(); it.run(); });
+      box.appendChild(row);
+    });
+    doc.body.appendChild(box);
+    // 画面からはみ出さないよう内側へ寄せる
+    var vw = doc.documentElement.clientWidth, vh = doc.documentElement.clientHeight;
+    box.style.left = Math.max(2, Math.min(x, vw - box.offsetWidth - 4)) + 'px';
+    box.style.top = Math.max(2, Math.min(y, vh - box.offsetHeight - 4)) + 'px';
+    function onKey(ev) { if (ev.key === 'Escape') closeCtxMenu(); }
+    function onDown() { closeCtxMenu(); }
+    setTimeout(function () {
+      doc.addEventListener('mousedown', onDown);
+      doc.addEventListener('keydown', onKey);
+    }, 0);
+    ctxCleanup = function () {
+      doc.removeEventListener('mousedown', onDown);
+      doc.removeEventListener('keydown', onKey);
+      if (box.parentNode) box.parentNode.removeChild(box);
+    };
+  }
+  // 上のメッセージ欄に短く出す（ブックマーク欄やツリーが画面外でも結果が分かるように）
+  function flashMsg(text, color) {
+    var msg = document.getElementById('saveMsg');
+    if (!msg) return;
+    msg.style.color = color || '#178a3a';
+    msg.textContent = text;
+    setTimeout(function () { if (msg.textContent === text) msg.textContent = ''; }, 3000);
+  }
+  // 「ここにフォルダを作る」。作れるのは作業フォルダの中だけ・1階層だけ（サーバー側でも同じ検査をする）
+  function makeFolder(parent) {
+    var name = window.prompt('「' + baseName(parent) + '」の中に作るフォルダの名前を入れてください', '');
+    if (name === null) return;            // キャンセル
+    name = name.trim();
+    if (!name) { flashMsg('フォルダ名が空です', '#c00'); return; }
+    var body = new URLSearchParams();
+    body.append('p', parent);
+    body.append('name', name);
+    fetch('mkdir.php', { method: 'POST', body: body })
+      .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+      .then(function (res) {
+        if (!res.ok) { flashMsg(res.t, '#c00'); return; }
+        flashMsg(res.t);
+        // 作ったフォルダをツリーに出して、開いた状態で一番上へ
+        var created = parent.replace(/[\\\/]+$/, '') + String.fromCharCode(92) + name;
+        refreshTree(function () { revealFolderInTree(created); });
+      })
+      .catch(function () { flashMsg('フォルダを作れませんでした', '#c00'); });
+  }
   treeEl.addEventListener('contextmenu', function (e) {
     var row = e.target.closest('.tree-file, .tree-folder-name');
     if (!row) return;
     var c = row.querySelector('.tree-c-copy');
     var p = c ? c.dataset.path : (row.dataset.path || '');
     if (!p) return;
-    e.preventDefault();
-    var wasOn = isBm(p);
-    // 意図せず消したり付けたりしないよう、必ず確認してから切り替える（2026-09-19 本人指定）
-    var ok = window.confirm((wasOn ? 'ブックマークから外しますか？' : 'ブックマークに登録しますか？')
-      + '\n\n' + baseName(p) + '\n' + bmRelDir(p));   // 場所は bmRelDir の文字そのまま（直下のときは既に括弧付き）
-    if (!ok) return;
-    toggleBm(p);
-    var msg = document.getElementById('saveMsg');
-    if (msg) {
-      msg.style.color = '#178a3a';
-      msg.textContent = (wasOn ? '★ ブックマークから外しました: ' : '★ ブックマークに登録しました: ') + baseName(p);
-      setTimeout(function () { if (msg.textContent.indexOf('★') === 0) msg.textContent = ''; }, 2000);
+    e.preventDefault();   // 行の上ではブラウザの右クリックメニューを出さない
+    var isFolder = row.classList.contains('tree-folder-name');
+    var items = [{
+      label: (isBm(p) ? '★ ブックマークから外す' : '★ ブックマークに登録') + '：' + baseName(p),
+      run: function () {
+        var wasOn = isBm(p);
+        toggleBm(p);
+        flashMsg((wasOn ? '★ ブックマークから外しました: ' : '★ ブックマークに登録しました: ') + baseName(p));
+      }
+    }];
+    if (isFolder) {
+      items.push({ label: '📁 ここにフォルダを作る', run: function () { makeFolder(p); } });
     }
+    showCtxMenu(row.ownerDocument, e.clientX, e.clientY, items);
   });
 
   // ビューア上部にファイル名を大きく表示する（場所は作業フォルダ以降を添える）

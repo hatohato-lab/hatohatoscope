@@ -279,6 +279,46 @@ def save_file():
         return Response('NG: write failed', status=500, mimetype='text/plain')
     return Response('OK: %d bytes saved' % len(body), mimetype='text/plain')
 
+# ---------------------------------------------------------------- フォルダ作成
+
+# 名前に使えない文字（区切り・Windowsで禁止の記号）。作る場所をずらさせない
+BAD_NAME_CHARS = set('\\/:*?"<>|')
+
+
+@app.route('/mkdir.php', methods=['POST'])
+def make_dir():
+    """右クリックメニューの「ここにフォルダを作る」の窓口（2026-09-20 追加）。
+
+    安全の決まりは mkdir.php（PHP版）と同じ:
+    作業フォルダの中だけ・1階層だけ・既にある名前は断る・削除はしない。
+    """
+    config = load_config()
+    if config is None:
+        return Response('NG: config not found', status=500, mimetype='text/plain')
+    root_n = norm(config['root'])
+    p = request.form.get('p', '')
+    name = request.form.get('name', '').strip()
+    if not p or not name:
+        return Response('NG: 親フォルダと名前が要ります', status=400, mimetype='text/plain')
+    if any(ch in BAD_NAME_CHARS for ch in name) or name in ('.', '..') or len(name) > 200:
+        return Response('NG: フォルダ名に使えない文字が入っています', status=400, mimetype='text/plain')
+    p_n = norm(p)
+    if p_n != root_n and not p_n.startswith(root_n + '/'):
+        return Response('NG: 作業フォルダの外には作れません', status=403, mimetype='text/plain')
+    if not os.path.isdir(p):
+        return Response('NG: 親フォルダがありません', status=404, mimetype='text/plain')
+    real_n = norm(os.path.realpath(p))   # リンクや .. で外へ抜ける手口を塞ぐ
+    if real_n != root_n and not real_n.startswith(root_n + '/'):
+        return Response('NG: 作業フォルダの外には作れません（実体）', status=403, mimetype='text/plain')
+    target = os.path.join(p, name)
+    if os.path.exists(target):
+        return Response('NG: 同じ名前のものが既にあります', status=409, mimetype='text/plain')
+    try:
+        os.mkdir(target)   # 再帰にしない（深い階層を一気に作らせない）
+    except OSError as e:
+        return Response('NG: 作成に失敗しました（%s）' % e, status=500, mimetype='text/plain')
+    return Response('OK: フォルダを作りました: ' + name, mimetype='text/plain')
+
 # ---------------------------------------------------------------- git 差分（読み取り専用）
 
 def run_git(args, cwd=None):
