@@ -206,17 +206,15 @@
     content: ''; position: absolute; left: -12px; top: 50%;
     width: 9px; height: 1px; background: #d8c79a;
   }
-  /* 行の形は下のツリー（エクスプローラ）と同じにし、色だけ少し変えてブックマーク欄だと分かるようにする
-     （2026-09-20 本人指定）。フォルダは「浮いた帯」、ファイルはただの行。帯の色は★の黄色に寄せた薄い色 */
+  /* フォルダの行に色を付けない（2026-09-21 本人指示）。帯をやめてただの行にし、
+     フォルダであることは ▼📁 と太字だけで示す。色が付くのはマウスを乗せた時だけ */
   .bm-dir-row {
     cursor: pointer; display: flex; align-items: center; gap: 4px;
-    padding: 3px 6px; margin: 2px 0;
+    padding: 2px 0 2px 2px;
     user-select: none; white-space: nowrap;
-    background: #fdf3dd; border: 1px solid #efdfb8; border-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.12);
     font-weight: 600; color: #3a2e00;
   }
-  .bm-dir-row:hover { background: #f8e6b8; border-color: #e0c98a; }
+  .bm-dir-row:hover { background: #f4ead3; }
   .bm-caret { flex: 0 0 auto; color: #a08a4a; font-size: 10px; }
   .bm-folder { flex: 0 0 auto; }
   .bm-dir-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
@@ -233,6 +231,16 @@
   #bmBtn { flex: 0 0 auto; font-size: 14px; padding: 4px 7px; cursor: pointer; }
   #bmBtn.on { background: #f6b93b; border-color: #d89b1c; color: #3a2e00; }
   .tree-bm-star { flex: 0 0 auto; margin-right: 4px; color: #e8a11a; font-size: 12px; }
+  /* ツリーとブックマーク欄の対応を示す印（2026-09-21 本人指示）。
+     片方の行にマウスを乗せると、同じパスの行がもう片方でも光る。
+     色は★と同じ黄系1色だけにする（色数を増やさない）。
+     hover の指定より後ろに置いて、重なったときはこちらを優先させる */
+  .tree-folder-name.xlink {
+    background: #ffe3a0; border-color: #dfae37; box-shadow: 0 0 0 2px #f6b93b;
+  }
+  .tree-file.xlink, .bm-item.xlink, .bm-dir-row.xlink {
+    background: #ffe3a0; border-radius: 3px; box-shadow: 0 0 0 2px #f6b93b;
+  }
   .loading { color: #999; padding: 10px; }
 </style>
 </head>
@@ -1616,7 +1624,9 @@
       });
       return html;
     }
-    bmListEl.innerHTML = renderNode(root);
+    // 一番上の段も .bm-children で包む（2026-09-21 本人指示）。包まないと、その段だけ
+    // 枝線（横の短い線）が付かず、同じフォルダの行なのに線の有無がばらついて見える
+    bmListEl.innerHTML = '<div class="bm-children">' + renderNode(root) + '</div>';
     bmBoxEl.style.display = 'block';
   }
   // 登録済みの行にだけ★印を付ける（件数が少ないので総なめしない）
@@ -1685,6 +1695,62 @@
     if (item) openBookmark(item.dataset.path);
   });
   urlInput.addEventListener('input', updateBmBtn);
+
+  // ===== ツリーとブックマーク欄の対応を知らせる（2026-09-21 本人指示） =====
+  // 色分けはせず、マウスを乗せている間だけ、同じパスの行をもう片方の欄で光らせる（.xlink）
+  var xlinkEls = [], xlinkKey = '';
+  function pathKey(p) { return String(p || '').replace(/\//g, '\\').toLowerCase(); }
+  function clearXlink() {
+    for (var i = 0; i < xlinkEls.length; i++) xlinkEls[i].classList.remove('xlink');
+    xlinkEls = []; xlinkKey = '';
+  }
+  // ツリー側：フォルダは帯そのものに、ファイルは行頭の c（パスコピー）にパスが入っている
+  function treeHoverPath(t) {
+    if (!t || !t.closest) return '';
+    var f = t.closest('.tree-folder-name');
+    if (f) return f.dataset.path || '';
+    var row = t.closest('.tree-file');
+    if (!row) return '';
+    var c = row.querySelector('.tree-c-copy');
+    return c ? (c.dataset.path || '') : '';
+  }
+  function bmHoverPath(t) {
+    if (!t || !t.closest) return '';
+    var r = t.closest('.bm-dir-row, .bm-item');
+    return r ? (r.dataset.path || '') : '';
+  }
+  // ブックマーク欄は件数が少ないので総なめしてよい。ツリーは数万行あるので属性セレクタで1回だけ引く
+  function bmRowsFor(key) {
+    var out = [];
+    bmListEl.querySelectorAll('.bm-dir-row, .bm-item').forEach(function (el) {
+      if (pathKey(el.dataset.path) === key) out.push(el);
+    });
+    return out;
+  }
+  function treeRowsFor(p) {
+    var q = String(p).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    var f = treeEl.querySelector('.tree-folder-name[data-path="' + q + '"]');
+    if (f) return [f];
+    var c = treeEl.querySelector(bmSelector(p));
+    var row = c && c.closest('.tree-file');
+    return row ? [row] : [];
+  }
+  function setXlink(path, from) {
+    var key = pathKey(path);
+    // どちらの欄から乗せたかも鍵に入れる。入れないと、ツリー→ブックマークへマウスを移したときに光る側が入れ替わらない
+    var mark = key ? (from + '|' + key) : '';
+    if (mark === xlinkKey) return;
+    clearXlink();
+    if (!key) return;
+    var els = (from === 'tree') ? bmRowsFor(key) : treeRowsFor(path);
+    for (var i = 0; i < els.length; i++) els[i].classList.add('xlink');
+    xlinkEls = els; xlinkKey = mark;
+  }
+  treeEl.addEventListener('mouseover', function (e) { setXlink(treeHoverPath(e.target), 'tree'); });
+  treeEl.addEventListener('mouseleave', clearXlink);
+  bmListEl.addEventListener('mouseover', function (e) { setXlink(bmHoverPath(e.target), 'bm'); });
+  bmListEl.addEventListener('mouseleave', clearXlink);
+
   renderBookmarks();
 
   // ブックマーク欄の高さをドラッグで変更（高さは記憶する）
