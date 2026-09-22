@@ -622,7 +622,7 @@
     if (ext === '.md') {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = mdHtml(marked.parse(stripFrontmatter(t)), dirName(winPath));
+        iframe.srcdoc = mdHtml(addHeadingIds(marked.parse(stripFrontmatter(t))), dirName(winPath));
       }).catch(function () { iframe.srcdoc = errHtml('MD読込エラー'); });
       return;
     }
@@ -759,6 +759,27 @@
     return '<div style="white-space:pre-wrap;border-bottom:1px solid #e5e5e5;padding-bottom:8px;margin-bottom:14px;">' + fm + '</div>\n\n' + md.slice(m[0].length);
   }
 
+  // 見出しに id を付ける（2026-09-22 追加）。marked は id を付けないため、
+  // マークダウンの中の目次リンク（[見出し](#見出し)）がどこにも飛べなかった。
+  // 付ける id は GitHub と同じ作り方：小文字にし、記号を落とし、空白を - にする。
+  // これで GitHub で通る目次リンクが、このビューアでもそのまま通る
+  function slugOf(text) {
+    return String(text).trim().toLowerCase()
+      .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '')
+      .replace(/\s/g, '-');   // 空白1つが - 1つ（GitHub と同じ。まとめて1つにしない）
+  }
+  function addHeadingIds(html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var used = {};
+    doc.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(function (h) {
+      if (h.id) { used[h.id] = 1; return; }
+      var base = slugOf(h.textContent) || 'section', id = base, n = 0;
+      while (used[id]) { id = base + '-' + (++n); }   // 同じ見出しが2回出たら -1 -2 と足す
+      used[id] = 1; h.id = id;
+    });
+    return doc.body.innerHTML;
+  }
+
   function mdHtml(inner, baseDir) {
     var hl = inner.length <= HL_MAX_CHARS;
     return '<html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;font-size:16px;padding:24px;line-height:1.7;max-width:900px;}pre{background:#f4f4f4;padding:10px;overflow-x:auto;}code{background:#f4f4f4;padding:2px 5px;}pre.mermaid{background:transparent;padding:0;overflow:visible;text-align:center;}table{border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}img{max-width:100%;}</style>'
@@ -783,7 +804,14 @@
       + 'var a=e.target.closest?e.target.closest("a"):null;'
       + 'if(!a){return;}'
       + 'var h=a.getAttribute("href")||"";'
-      + 'if(!h||h.charAt(0)==="#"){return;}'
+      + 'if(!h||h.charAt(0)==="#"){'
+      + 'var id=h.slice(1);try{id=decodeURIComponent(id);}catch(_e){}'
+      + 'var el=document.getElementById(id);'
+      // 手書きの目次は大文字小文字がずれていることがある（#基本的なSEO対策 など）ので拾い直す
+      + 'if(!el){var lo=id.toLowerCase(),hs=document.querySelectorAll("h1,h2,h3,h4,h5,h6,[id]");'
+      + 'for(var i=0;i<hs.length;i++){if((hs[i].id||"").toLowerCase()===lo){el=hs[i];break;}}}'
+      + 'if(el){e.preventDefault();el.scrollIntoView({behavior:"smooth",block:"start"});}'
+      + 'return;}'
       + 'e.preventDefault();'
       + 'if(h.indexOf("//")===0){window.open("https:"+h,"_blank","noopener");return;}'
       + 'if(/^[a-z][a-z0-9+.-]*:/i.test(h)){window.open(a.href,"_blank","noopener");return;}'
