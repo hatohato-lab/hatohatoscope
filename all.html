@@ -241,6 +241,10 @@
   .tree-file.xlink, .bm-item.xlink, .bm-dir-row.xlink {
     background: #ffe3a0; border-radius: 3px; box-shadow: 0 0 0 2px #f6b93b;
   }
+  /* ツリーの行を押したとき、一番上へ寄せたブックマーク行を2秒だけ光らせる */
+  .bm-dir-row.bm-hit, .bm-item.bm-hit {
+    background: #ffe3a0; border-radius: 3px; box-shadow: 0 0 0 2px #f6b93b;
+  }
   .loading { color: #999; padding: 10px; }
 </style>
 </head>
@@ -439,6 +443,8 @@
   // 巨大ツリーでも固まらないよう、各ノードに個別付与せず treeEl 1つに委譲する。
   // （従来は数万ノードに addEventListener していたため、ここで固まっていた。）
   function onTreeClick(e) {
+    // 押した行と同じパスのブックマーク行を、ブックマーク欄の一番上へ寄せる（2026-09-22 本人指示）
+    revealBmRow(treeHoverPath(e.target));
     // 差分ボタン（±）：そのファイル／フォルダだけの差分を表示
     var d = e.target.closest('.tree-d-btn');
     if (d) { e.stopPropagation(); showDiff(d.dataset.path); return; }
@@ -1773,6 +1779,25 @@
     var els = (from === 'tree') ? bmRowsFor(key) : treeRowsFor(path);
     for (var i = 0; i < els.length; i++) els[i].classList.add('xlink');
     xlinkEls = els; xlinkKey = mark;
+  }
+  // ツリーの行を押したとき、同じパスのブックマーク行を枠の一番上へ寄せて光らせる（2026-09-22 本人指示）。
+  // ブックマークに無い行を押したときは動かさない（今見ている位置を見失うため）
+  var bmHitEl = null, bmHitTimer = 0;
+  function revealBmRow(p) {
+    var key = pathKey(p);
+    if (!key || !bmListEl) return false;
+    var els = bmRowsFor(key);
+    if (!els.length) return false;
+    var el = els[0];
+    bmListEl.scrollTop += el.getBoundingClientRect().top - bmListEl.getBoundingClientRect().top;
+    if (bmHitEl) bmHitEl.classList.remove('bm-hit');
+    el.classList.add('bm-hit'); bmHitEl = el;
+    clearTimeout(bmHitTimer);
+    bmHitTimer = setTimeout(function () {
+      el.classList.remove('bm-hit');
+      if (bmHitEl === el) bmHitEl = null;
+    }, 2000);
+    return true;
   }
   treeEl.addEventListener('mouseover', function (e) { setXlink(treeHoverPath(e.target), 'tree'); });
   treeEl.addEventListener('mouseleave', clearXlink);
