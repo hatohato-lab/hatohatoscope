@@ -69,8 +69,12 @@
   .grep-item .gname { font-size: 14px; font-weight: bold; color: #0645ad; }
   .grep-item .gdir { font-size: 11.5px; color: #555; }
   .grep-item .gtext { font-size: 12.5px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .content { flex: 1; display: flex; flex-direction: column; }
-  .url-bar { display: flex; align-items: center; padding: 6px; border-bottom: 1px solid #ccc; background: #fafafa; gap: 6px; }
+  /* min-width:0 が無いと、長いファイル名の帯（#fileTitleName は nowrap）が縮まず、
+     ページ全体に横スクロールが出る（2026-09-26 本人指示で修正） */
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  /* flex-wrap:wrap が無いと、窓を狭めた時や左メニューを広げた時に、
+     ボタンの並びが縮まずページ全体に横スクロールが出る（2026-09-26 修正） */
+  .url-bar { display: flex; flex-wrap: wrap; align-items: center; padding: 6px; border-bottom: 1px solid #ccc; background: #fafafa; gap: 6px; }
   .url-wrap { position: relative; flex: 1; display: flex; }
   #urlInput { flex: 1; font-size: 14px; padding: 5px 26px 5px 5px; min-width: 0; }
   /* 入力欄のクリア（×）。文字があるときだけ出す */
@@ -111,7 +115,7 @@
   #fileTitleDir { display: block; font-size: 12px; color: #555;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* 本文と目次を横に並べる箱（2026-09-19 変更。目次を重ねずに左へ置くため flex にした） */
-  .viewer-area { flex: 1; position: relative; display: flex; min-height: 0; }
+  .viewer-area { flex: 1; position: relative; display: flex; min-height: 0; min-width: 0; }
   /* 目次ペイン（開いたMarkdown/HTMLの見出し一覧）。order:-1 で本文より左に出す。
      重ねないので本文は残りの幅に収まる（DOMの位置は動かしていない） */
   #outlinePane { order: -1; flex: 0 0 240px; overflow: auto;
@@ -774,6 +778,35 @@
       .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '')
       .replace(/\s/g, '-');   // 空白1つが - 1つ（GitHub と同じ。まとめて1つにしない）
   }
+  // 地の文に書いた Windows のパスも押して開けるようにする（2026-09-26 本人指示）。
+  // marked がリンクにするのはリンク記法と http から始まる URL だけで、C:\... は素通りしていた。
+  // 行の折り返しで空白が入ることがあるため、直後が \ の空白だけは中に含める
+  var WIN_PATH = /[A-Za-z]:\\(?:[^\s"'<>|*?、。）」]|[ \t](?=\\))+/g;
+  function linkifyPaths(doc) {
+    var walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null);
+    var targets = [], n;
+    while ((n = walker.nextNode())) {
+      if (!n.parentNode || (n.parentNode.closest && n.parentNode.closest('a, .hhpath'))) continue;
+      WIN_PATH.lastIndex = 0;
+      if (WIN_PATH.test(n.nodeValue)) targets.push(n);
+    }
+    targets.forEach(function (node) {
+      var frag = doc.createDocumentFragment(), t = node.nodeValue, last = 0, m;
+      WIN_PATH.lastIndex = 0;
+      while ((m = WIN_PATH.exec(t))) {
+        if (m.index > last) frag.appendChild(doc.createTextNode(t.slice(last, m.index)));
+        var sp = doc.createElement('span');
+        sp.className = 'hhpath';
+        sp.setAttribute('data-p', m[0].replace(/[ \t]+/g, ''));   // 折り返しで入った空白は外す
+        sp.setAttribute('title', '押すとこのファイルを開きます');
+        sp.textContent = m[0];
+        frag.appendChild(sp);
+        last = m.index + m[0].length;
+      }
+      if (last < t.length) frag.appendChild(doc.createTextNode(t.slice(last)));
+      node.parentNode.replaceChild(frag, node);
+    });
+  }
   function addHeadingIds(html) {
     var doc = new DOMParser().parseFromString(html, 'text/html');
     var used = {};
@@ -783,12 +816,13 @@
       while (used[id]) { id = base + '-' + (++n); }   // 同じ見出しが2回出たら -1 -2 と足す
       used[id] = 1; h.id = id;
     });
+    linkifyPaths(doc);
     return doc.body.innerHTML;
   }
 
   function mdHtml(inner, baseDir) {
     var hl = inner.length <= HL_MAX_CHARS;
-    return '<html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;font-size:16px;padding:24px;line-height:1.7;max-width:900px;}pre{background:#f4f4f4;padding:10px;overflow-x:auto;}code{background:#f4f4f4;padding:2px 5px;}pre.mermaid{background:transparent;padding:0;overflow:visible;text-align:center;}table{border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}img{max-width:100%;}</style>'
+    return '<html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;font-size:16px;padding:24px;line-height:1.7;max-width:900px;overflow-wrap:break-word;}pre{background:#f4f4f4;padding:10px;overflow-x:auto;}code{background:#f4f4f4;padding:2px 5px;overflow-wrap:anywhere;}pre.mermaid{background:transparent;padding:0;overflow:visible;text-align:center;}table{border-collapse:collapse;width:100%;max-width:100%;}th,td{border:1px solid #ccc;padding:8px;overflow-wrap:anywhere;}img{max-width:100%;}.hhpath{color:#1a4f8a;text-decoration:underline;cursor:pointer;}</style>'
       + '<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></scr' + 'ipt>'
       // 本文中のコードブロックも色付けする（明るい背景に合う配色。長い文書では見送る）
       + (hl ? '<link rel="stylesheet" href="' + HL_BASE + '/styles/github.min.css">'
@@ -807,6 +841,8 @@
       // リンクの振り分け：外部URLは新しいタブ、ファイルへのリンクは親のビューアに開かせる
       + 'var HHDIR=' + JSON.stringify(baseDir || '') + ';'
       + 'document.addEventListener("click",function(e){'
+      + 'var sp=e.target.closest?e.target.closest(".hhpath"):null;'
+      + 'if(sp){e.preventDefault();parent.postMessage({t:"hhscopeOpen",dir:HHDIR,href:sp.getAttribute("data-p")},"*");return;}'
       + 'var a=e.target.closest?e.target.closest("a"):null;'
       + 'if(!a){return;}'
       + 'var h=a.getAttribute("href")||"";'
