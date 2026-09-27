@@ -189,7 +189,9 @@
   .tree-d-btn:hover { background: #b45f06; color: #fff; border-color: #b45f06; }
   /* ===== ブックマーク ===== */
   .bm-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
-  .bm-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px; }
+  .bm-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px;
+    display: flex; align-items: center; justify-content: space-between; }
+  #bmExpandBtn { font-size: 11px; padding: 1px 7px; cursor: pointer; font-weight: normal; }
   /* 左の絞り込み欄の下に出す「本文を検索」ボタン行 */
   .tree-grep { display: none; padding: 6px 8px; margin: 4px 0; border: 1px solid #bbb; border-radius: 4px;
     cursor: pointer; font-size: 13px; color: #000; background: #f7f7f7; }
@@ -297,7 +299,7 @@
       </div>
       <div class="tree-grep" id="treeGrep" title="ファイルの中身から探す"></div>
       <div class="bm-box" id="bmBox" style="display:none;">
-        <div class="bm-head">★ ブックマーク</div>
+        <div class="bm-head">★ ブックマーク<button id="bmExpandBtn" title="登録してあるフォルダを全部開く／全部畳む">全部開く</button></div>
         <div class="bm-list" id="bmList"></div>
         <div class="bm-resize" id="bmResize" title="ドラッグでブックマーク欄の高さを変更"></div>
       </div>
@@ -1741,12 +1743,33 @@
     if (!on && i >= 0) a.splice(i, 1);
     setBmOpen(a);
   }
+  // 「全部開く」「全部畳む」（2026-09-27 本人指示。まとめて見たいときのため）
+  function bmDirRows() { return Array.prototype.slice.call(bmListEl.querySelectorAll('.bm-dir-row')); }
+  function bmSetAll(on) {
+    var rows = bmDirRows();
+    rows.forEach(function (r) {
+      r.dataset.open = on ? 'true' : 'false';
+      var box = r.nextElementSibling;
+      if (box && box.classList.contains('bm-children')) box.style.display = on ? 'block' : 'none';
+    });
+    setBmOpen(on ? rows.map(function (r) { return r.dataset.path; }) : []);
+    updateBmExpandBtn();
+  }
+  function updateBmExpandBtn() {
+    var btn = document.getElementById('bmExpandBtn');
+    if (!btn) return;
+    var rows = bmDirRows();
+    btn.style.display = rows.length ? '' : 'none';
+    var closed = rows.filter(function (r) { return r.dataset.open !== 'true'; }).length;
+    btn.textContent = closed ? '全部開く' : '全部畳む';
+  }
   function bmToggleRow(row) {
     var on = row.dataset.open !== 'true';
     row.dataset.open = on ? 'true' : 'false';
     var box = row.nextElementSibling;
     if (box && box.classList.contains('bm-children')) box.style.display = on ? 'block' : 'none';
     bmSetOpen(row.dataset.path, on);
+    updateBmExpandBtn();
   }
 
   function renderBookmarks() {
@@ -1806,6 +1829,7 @@
     // 枝線（横の短い線）が付かず、同じフォルダの行なのに線の有無がばらついて見える
     bmListEl.innerHTML = '<div class="bm-children">' + renderNode(root) + '</div>';
     bmBoxEl.style.display = 'block';
+    updateBmExpandBtn();
   }
   // 登録済みの行にだけ★印を付ける（件数が少ないので総なめしない）
   function bmSelector(p) {
@@ -1888,6 +1912,12 @@
     }
     showCtxMenu(row.ownerDocument, e.clientX, e.clientY, items);
   });
+  (function () {
+    var btn = document.getElementById('bmExpandBtn');
+    if (btn) btn.addEventListener('click', function () {
+      bmSetAll(bmDirRows().some(function (r) { return r.dataset.open !== 'true'; }));
+    });
+  })();
   urlInput.addEventListener('input', updateBmBtn);
 
   // ===== ツリーとブックマーク欄の対応を知らせる（2026-09-21 本人指示） =====
