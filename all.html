@@ -262,10 +262,22 @@
   .bm-dir-row.bm-hit, .bm-item.bm-hit {
     background: #ffe3a0; border-radius: 3px; box-shadow: 0 0 0 2px #f6b93b;
   }
+  /* 行にマウスを乗せたときの吹き出し（2026-09-27 本人指示）。
+     ブラウザ標準の吹き出しは出るまで約1秒かかり、長いパスがそのまま出て読みにくいため自前で出す。
+     出すのは名前だけ。待ち時間なし */
+  #hoverTip {
+    position: fixed; z-index: 9998; display: none;
+    max-width: 640px; padding: 5px 9px;
+    background: #fff; color: #000; border: 1px solid #999; border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    font-size: 14px; line-height: 1.5; white-space: normal; word-break: break-all;
+    pointer-events: none;
+  }
   .loading { color: #999; padding: 10px; }
 </style>
 </head>
 <body>
+<div id="hoverTip"></div>
 <div class="container">
   <nav class="menu">
     <div class="menu-header">
@@ -447,9 +459,9 @@
         if (fext === '.md') { html += '<span class="tree-f-icon">📝</span>'; }
         else if (fext === '.html' || fext === '.htm') { html += '<span class="tree-f-icon">🌐</span>'; }
         if (viewable) {
-          html += '<a class="viewlink" data-win="' + esc(it.path) + '" title="' + esc(it.name) + '">' + esc(it.name) + '</a>';
+          html += '<a class="viewlink" data-win="' + esc(it.path) + '">' + esc(it.name) + '</a>';
         } else {
-          html += '<a class="nonview" title="' + esc(it.name) + '">' + esc(it.name) + '</a>';
+          html += '<a class="nonview">' + esc(it.name) + '</a>';
         }
         html += '</div>';
       }
@@ -459,6 +471,16 @@
 
   // 巨大ツリーでも固まらないよう、各ノードに個別付与せず treeEl 1つに委譲する。
   // （従来は数万ノードに addEventListener していたため、ここで固まっていた。）
+  // 行頭の c（パスコピー）を押したときの動き。ツリーとブックマーク欄で共通にする（2026-09-27）
+  function runCopyBtn(copy) {
+    copyText(copy.dataset.path).then(function () {
+      copy.classList.add('copied'); copy.textContent = '✓';
+      setTimeout(function () { copy.classList.remove('copied'); copy.textContent = 'c'; }, 1000);
+    }).catch(function () {
+      copy.classList.add('copied'); copy.textContent = '!';
+      setTimeout(function () { copy.classList.remove('copied'); copy.textContent = 'c'; }, 1000);
+    });
+  }
   function onTreeClick(e) {
     // 押した行と同じパスのブックマーク行を、ブックマーク欄の一番上へ寄せる（2026-09-22 本人指示）
     revealBmRow(treeHoverPath(e.target));
@@ -467,17 +489,7 @@
     if (d) { e.stopPropagation(); showDiff(d.dataset.path); return; }
     // パスコピー（フォルダ・ファイル共通）。開閉やファイル表示には伝播させない。
     var copy = e.target.closest('.tree-c-copy');
-    if (copy) {
-      e.stopPropagation();
-      copyText(copy.dataset.path).then(function () {
-        copy.classList.add('copied'); copy.textContent = '✓';
-        setTimeout(function () { copy.classList.remove('copied'); copy.textContent = 'c'; }, 1000);
-      }).catch(function () {
-        copy.classList.add('copied'); copy.textContent = '!';
-        setTimeout(function () { copy.classList.remove('copied'); copy.textContent = 'c'; }, 1000);
-      });
-      return;
-    }
+    if (copy) { e.stopPropagation(); runCopyBtn(copy); return; }
     // ファイル表示
     var link = e.target.closest('a.viewlink');
     if (link) {
@@ -1769,7 +1781,8 @@
           var inner = renderNode(child);
           // 行の中身は名前だけにする（2026-09-27 本人指示。▼ と 📁 は無くても階層は線で分かる）
           var isOpen = bmIsOpen(child.path);
-          html += '<div class="bm-dir-row" data-path="' + esc(child.path) + '" data-open="' + isOpen + '" title="' + esc(child.path) + '">'
+          html += '<div class="bm-dir-row" data-path="' + esc(child.path) + '" data-open="' + isOpen + '">'
+            + '<span class="tree-c-copy" data-path="' + esc(child.path) + '" title="パスをコピー">c</span>'
             + '<span class="bm-dir-name">' + esc(name) + '</span></div>'
             + (inner ? '<div class="bm-children"' + (isOpen ? '' : ' style="display:none;"') + '>' + inner + '</div>' : '');
         });
@@ -1781,7 +1794,8 @@
         // 場所は空でも空けておく（幅18pxを保たないと、行ごとに名前の始まりがずれる）
         var bIsDir = !!b.dir, bExt = extOf(b.name);
         var bIcon = bIsDir ? '' : (bExt === '.md' ? '📝' : (bExt === '.html' || bExt === '.htm' ? '🌐' : ''));
-        html += '<div class="bm-item' + (bIsDir ? ' bm-item-dir' : '') + '" data-path="' + esc(b.path) + '" title="' + esc(b.path) + '">'
+        html += '<div class="bm-item' + (bIsDir ? ' bm-item-dir' : '') + '" data-path="' + esc(b.path) + '">'
+          + '<span class="tree-c-copy" data-path="' + esc(b.path) + '" title="パスをコピー">c</span>'
           + '<span class="uh-icon">' + bIcon + '</span>'
           + '<span class="bm-name">' + esc(b.name) + '</span>'
           + '<span class="bm-del" title="ブックマークから外す">×</span>'
@@ -1848,6 +1862,8 @@
     if (root && p.toLowerCase().indexOf(root) === 0) refreshTree(function () { revealFolderInTree(p); });
   }
   bmListEl.addEventListener('click', function (e) {
+    var copy = e.target.closest('.tree-c-copy');
+    if (copy) { e.stopPropagation(); runCopyBtn(copy); return; }   // 行頭の c（ツリーと同じ）
     var del = e.target.closest('.bm-del');
     if (del) {
       var row = del.closest('.bm-item');
@@ -2472,6 +2488,38 @@
     if (tag === 'input' || tag === 'textarea') return;
     hardReloadViewer();
   });
+
+  // 行の名前だけを、待ち時間なしで出す吹き出し（2026-09-27 本人指示。長いパスは出さない）
+  var tipEl = document.getElementById('hoverTip');
+  var tipRow = null;
+  function tipRowOf(t) {
+    if (!t || !t.closest) return null;
+    return t.closest('.tree-file, .tree-folder-name, .bm-item, .bm-dir-row');
+  }
+  function tipNameOf(row) {
+    var el = row.querySelector('.tree-folder-label, .bm-dir-name, .bm-name, a');
+    return el ? el.textContent.trim() : '';
+  }
+  function hideTip() { tipRow = null; if (tipEl) tipEl.style.display = 'none'; }
+  document.addEventListener('mouseover', function (e) {
+    var row = tipRowOf(e.target);
+    if (row === tipRow) return;
+    tipRow = row;
+    if (!row || !tipEl) { if (tipEl) tipEl.style.display = 'none'; return; }
+    var text = tipNameOf(row);
+    if (!text) { tipEl.style.display = 'none'; return; }
+    tipEl.textContent = text;
+    tipEl.style.display = 'block';
+    // 行のすぐ下に出す。画面からはみ出すときは内側へ寄せる
+    var r = row.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    var left = Math.min(r.left + 16, window.innerWidth - w - 8);
+    var top = (r.bottom + 4 + h > window.innerHeight) ? (r.top - h - 4) : (r.bottom + 4);
+    tipEl.style.left = Math.max(4, left) + 'px';
+    tipEl.style.top = Math.max(4, top) + 'px';
+  });
+  document.addEventListener('mouseleave', hideTip);
+  document.addEventListener('mousedown', hideTip);
+  window.addEventListener('scroll', hideTip, true);   // ツリーやブックマーク欄を動かしたら消す
 
   load();
 })();
