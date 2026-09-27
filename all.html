@@ -9,11 +9,16 @@
   * { box-sizing: border-box; }
   body { margin: 0; font-family: "Segoe UI", "Meiryo", sans-serif; font-size: 16px; color: #1a1a1a; }
   .container { display: flex; height: 100vh; }
+  /* 左の欄は縦に並べ、スクロールは中の2つ（ブックマーク欄とツリー）が別々に持つ
+     （2026-09-27 本人指示。欄ぜんたいのスクロールと二重になって境目が見づらかった） */
   .menu {
     width: 520px; min-width: 150px; max-width: 1400px;
-    overflow: auto; padding: 8px 10px;
+    overflow: hidden; padding: 8px 10px;
     background: #f7f7f7; flex: 0 0 auto;
+    display: flex; flex-direction: column;
   }
+  .menu > .menu-header { flex: 0 0 auto; }
+  #tree { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
   /* ドラッグで左メニュー幅を変える境界バー */
   .dragbar {
     flex: 0 0 6px; cursor: col-resize; background: #ccc;
@@ -194,13 +199,13 @@
   .bm-resize:hover, .bm-resize.dragging { background: #1a4f8a; }
   /* height（上限ではなく高さそのもの）を指定する。
      max-height だと中身の量までしか広がらず、ドラッグしても大きくならない（2026-08-28 修正） */
-  .bm-list { height: 210px; overflow: auto; }
+  .bm-list { height: 210px; overflow-y: auto; overflow-x: hidden; }
   /* フォルダの入れ子で見せる（2026-09-19 変更。仕事側のビューアと同じ階層の形）。
      段は入れ子の箱で下げ、ツリー本体と同じ線でつなぐ（2026-09-20。段だけだと散らばって見えたため）。
      フォルダ行は ▼📁、ファイル行は拡張子アイコン */
   .bm-children {
     margin-left: 8px; padding-left: 12px;
-    border-left: 1px solid #d8c79a;   /* 階層の縦ガイド線。形はツリーと同じ・色だけ黄系 */
+    border-left: 1px solid #c4c4c4;   /* 階層の縦ガイド線。色も形もツリーと同じ */
   }
   /* 縦線から各項目へ伸びる横線 */
   .bm-children > .bm-dir-row,
@@ -208,28 +213,36 @@
   .bm-children > .bm-dir-row::before,
   .bm-children > .bm-item::before {
     content: ''; position: absolute; left: -12px; top: 50%;
-    width: 9px; height: 1px; background: #d8c79a;
+    width: 9px; height: 1px; background: #c4c4c4;
   }
-  /* フォルダの行に色を付けない（2026-09-21 本人指示）。帯をやめてただの行にし、
-     フォルダであることは ▼📁 と太字だけで示す。色が付くのはマウスを乗せた時だけ */
+  /* 行の見た目は下のツリー（エクスプローラ）と同じにする（2026-09-27 本人指示）。
+     .tree-folder-name と同じ値を使う。フォルダの印の ▼📁 だけはブックマーク欄に残す */
   .bm-dir-row {
     cursor: pointer; display: flex; align-items: center; gap: 4px;
-    padding: 2px 0 2px 2px;
+    padding: 3px 6px; margin: 2px 0;
     user-select: none; white-space: nowrap;
-    font-weight: 600; color: #3a2e00;
+    background: #ebedf0; border: 1px solid #dcdfe3; border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+    font-weight: 600;
   }
-  .bm-dir-row:hover { background: #f4ead3; }
-  .bm-caret { flex: 0 0 auto; color: #a08a4a; font-size: 10px; }
-  .bm-folder { flex: 0 0 auto; }
+  .bm-dir-row:hover { background: #dbe6f3; border-color: #b6cbe4; }
   .bm-dir-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
   .bm-item { display: flex; align-items: center; gap: 5px; padding: 2px 0 2px 2px;
     cursor: pointer; text-align: left; white-space: nowrap; }
-  .bm-item:hover { background: #f4ead3; }
+  /* ブックマークしたフォルダそのものの行。ツリーのフォルダと同じ「浮いた帯」にする */
+  .bm-item.bm-item-dir {
+    padding: 3px 6px; margin: 2px 0;
+    background: #ebedf0; border: 1px solid #dcdfe3; border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-weight: 600;
+  }
+  .bm-item.bm-item-dir:hover { background: #dbe6f3; border-color: #b6cbe4; }
+  .bm-item.bm-item-dir .bm-name { color: inherit; }
+  .bm-item:hover { background: #e8e8e8; }
   /* 絵文字は字ごとに幅が違う。固定幅にしないと行ごとに名前の開始位置がずれる */
   .bm-item .uh-icon { flex: 0 0 18px; width: 18px; text-align: center; }
   /* min-width:0 が無いと、flexの子は中身より縮めず、長い名前が列幅を押し広げて×印がずれる */
-  /* ファイル名はツリーの行と同じ見た目（太字にしない）。色だけ少し濃くしてブックマーク欄と分かるようにする */
-  .bm-name { flex: 1 1 auto; min-width: 0; color: #12406f; overflow: hidden; text-overflow: ellipsis; }
+  /* ファイル名はツリーの行とまったく同じ（太字にしない・色も同じ #1a4f8a） */
+  .bm-name { flex: 1 1 auto; min-width: 0; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
   .bm-del { flex: 0 0 auto; width: 16px; text-align: center; color: #999; border-radius: 3px; }
   .bm-del:hover { background: #c00; color: #fff; }
   #bmBtn { flex: 0 0 auto; font-size: 14px; padding: 4px 7px; cursor: pointer; }
@@ -554,6 +567,64 @@
       })
       .catch(function () { flashMsg('フォルダを作れませんでした', '#c00'); });
   }
+  // 「ここにファイルを作る」。中身は空で作る。拡張子が無ければ .md を付ける（2026-09-27 追加）
+  function makeFile(parent) {
+    var name = window.prompt('「' + baseName(parent) + '」の中に作るファイルの名前を入れてください（拡張子が無ければ .md を付けます）', '');
+    if (name === null) return;
+    name = name.trim();
+    if (!name) { flashMsg('ファイル名が空です', '#c00'); return; }
+    if (name.indexOf('.') < 0) name += '.md';
+    var body = new URLSearchParams();
+    body.append('p', parent);
+    body.append('name', name);
+    fetch('newfile.php', { method: 'POST', body: body })
+      .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+      .then(function (res) {
+        if (!res.ok) { flashMsg(res.t, '#c00'); return; }
+        flashMsg(res.t);
+        var created = parent.replace(/[\\\/]+$/, '') + String.fromCharCode(92) + name;
+        refreshTree(function () { openFile(created); revealInTree(created); });   // 作ってすぐ開く
+      })
+      .catch(function () { flashMsg('ファイルを作れませんでした', '#c00'); });
+  }
+  // ブックマークに入っているものの名前が変わったら、登録も付け替える（そのままだと開けなくなる）
+  function fixBmPath(oldP, newP) {
+    var sep = String.fromCharCode(92), lo = oldP.toLowerCase(), a = getBm(), changed = false;
+    a.forEach(function (b) {
+      var lb = String(b.path).toLowerCase();
+      if (lb === lo || lb.indexOf(lo + sep) === 0) {
+        b.path = newP + b.path.substring(oldP.length);
+        b.name = baseName(b.path);
+        changed = true;
+      }
+    });
+    if (changed) { setBm(a); renderBookmarks(); markTreeBookmarks(); }
+  }
+  // 「名前を変える」。同じ場所のまま名前だけ変える（2026-09-27 追加）
+  function renamePath(target, isFolder) {
+    var oldName = baseName(target);
+    var name = window.prompt((isFolder ? 'フォルダ' : 'ファイル') + 'の新しい名前を入れてください', oldName);
+    if (name === null) return;
+    name = name.trim();
+    if (!name || name === oldName) return;
+    var body = new URLSearchParams();
+    body.append('p', target);
+    body.append('name', name);
+    fetch('rename.php', { method: 'POST', body: body })
+      .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+      .then(function (res) {
+        if (!res.ok) { flashMsg(res.t, '#c00'); return; }
+        flashMsg(res.t);
+        var moved = dirName(target) + String.fromCharCode(92) + name;
+        var wasOpen = currentWin && currentWin.toLowerCase() === target.toLowerCase();
+        fixBmPath(target, moved);
+        refreshTree(function () {
+          if (isFolder) { revealFolderInTree(moved); }
+          else { if (wasOpen) openFile(moved); revealInTree(moved); }
+        });
+      })
+      .catch(function () { flashMsg('名前を変えられませんでした', '#c00'); });
+  }
   treeEl.addEventListener('contextmenu', function (e) {
     var row = e.target.closest('.tree-file, .tree-folder-name');
     if (!row) return;
@@ -572,7 +643,9 @@
     }];
     if (isFolder) {
       items.push({ label: '📁 ここにフォルダを作る', run: function () { makeFolder(p); } });
+      items.push({ label: '📄 ここにファイルを作る', run: function () { makeFile(p); } });
     }
+    items.push({ label: '✏ 名前を変える：' + baseName(p), run: function () { renamePath(p, isFolder); } });
     showCtxMenu(row.ownerDocument, e.clientX, e.clientY, items);
   });
 
@@ -1000,7 +1073,7 @@
 
   function renderTree(data, keepScroll) {
     var menu = menuEl;
-    var st = menu ? menu.scrollTop : 0;
+    var st = treeEl ? treeEl.scrollTop : 0;   // スクロールはツリー自身が持つ
     if (data.path) treeRootPath = data.path;
     flatIndex = [];
     buildIndex(data.children || []);
@@ -1021,7 +1094,7 @@
     }
     if (!revealedNow && currentWin) revealInTree(currentWin);
     // 裏の自動更新では、見ていた位置が飛ばないようスクロールを元に戻す
-    if (keepScroll && menu && !revealedNow) menu.scrollTop = st;
+    if (keepScroll && treeEl && !revealedNow) treeEl.scrollTop = st;
     // 作業フォルダの最上位が分かってから、ブックマークのパス表示を短縮し直す
     renderBookmarks();
     markTreeBookmarks();
@@ -1176,9 +1249,9 @@
     if (editor.style.display !== 'none'
         && !confirm('編集中です。保存していない変更は失われます。再表示しますか？')) return;
     var menu = menuEl;
-    var st = menu ? menu.scrollTop : 0;   // ツリーの見ていた位置を保つ
+    var st = treeEl ? treeEl.scrollTop : 0;   // ツリーの見ていた位置を保つ
     openFile(currentWin);
-    if (menu) menu.scrollTop = st;
+    if (treeEl) treeEl.scrollTop = st;
     msg.textContent = '';
     btn.classList.add('done');            // 押したことが分かるように一瞬だけ色を変える
     setTimeout(function () { btn.classList.remove('done'); }, 600);
@@ -1216,12 +1289,9 @@
   // 選んだ項目を、ツリー表示領域の一番上（上部に固定されたブックマーク欄のすぐ下）へ送る。
   // scrollIntoView({block:'start'}) だと、固定ヘッダーの裏に隠れてしまうため自前で計算する。
   function scrollTreeItemToTop(el) {
-    if (!el || !menuEl) return;
-    var header = menuEl.querySelector('.menu-header');
-    // 固定ヘッダーの「実際の下端」を基準にする。
-    // メニュー上端＋ヘッダー高さで計算すると、内側の余白のぶんだけ裏に隠れる（2026-08-29 実測）
-    var base = header ? header.getBoundingClientRect().bottom : menuEl.getBoundingClientRect().top;
-    menuEl.scrollTop += el.getBoundingClientRect().top - base - 4;
+    if (!el || !treeEl) return;
+    // ツリーが自分でスクロールするようになったので、ツリーの上端を基準にするだけでよい（2026-09-27）
+    treeEl.scrollTop += el.getBoundingClientRect().top - treeEl.getBoundingClientRect().top - 4;
   }
 
   // ツリー内に同じファイルがあれば、強調表示して祖先フォルダを展開する
@@ -1649,6 +1719,25 @@
     if (dl.indexOf(rl + '\\') === 0) return d.substring(root.length + 1);
     return d;   // 作業フォルダの外（.claude 等）は、そのまま出す
   }
+  // どの段を開いているかを覚える（2026-09-27 追加。ツリーの開閉の記憶と同じ作り）
+  var BM_OPEN_KEY = 'allViewerBmOpen';
+  function getBmOpen() { try { return JSON.parse(localStorage.getItem(BM_OPEN_KEY)) || []; } catch (e) { return []; } }
+  function setBmOpen(a) { try { localStorage.setItem(BM_OPEN_KEY, JSON.stringify(a)); } catch (e) {} }
+  function bmIsOpen(p) { return getBmOpen().indexOf(p) >= 0; }
+  function bmSetOpen(p, on) {
+    var a = getBmOpen(), i = a.indexOf(p);
+    if (on && i < 0) a.push(p);
+    if (!on && i >= 0) a.splice(i, 1);
+    setBmOpen(a);
+  }
+  function bmToggleRow(row) {
+    var on = row.dataset.open !== 'true';
+    row.dataset.open = on ? 'true' : 'false';
+    var box = row.nextElementSibling;
+    if (box && box.classList.contains('bm-children')) box.style.display = on ? 'block' : 'none';
+    bmSetOpen(row.dataset.path, on);
+  }
+
   function renderBookmarks() {
     var a = getBm();
     if (!a.length) { bmBoxEl.style.display = 'none'; bmListEl.innerHTML = ''; return; }
@@ -1678,16 +1767,22 @@
         .forEach(function (name) {
           var child = node.dirs[name];
           var inner = renderNode(child);
-          html += '<div class="bm-dir-row" data-path="' + esc(child.path) + '" title="' + esc(child.path) + '">'
-            + '<span class="bm-caret">▼</span><span class="bm-folder">📁</span>'
+          // 行の中身は名前だけにする（2026-09-27 本人指示。▼ と 📁 は無くても階層は線で分かる）
+          var isOpen = bmIsOpen(child.path);
+          html += '<div class="bm-dir-row" data-path="' + esc(child.path) + '" data-open="' + isOpen + '" title="' + esc(child.path) + '">'
             + '<span class="bm-dir-name">' + esc(name) + '</span></div>'
-            + (inner ? '<div class="bm-children">' + inner + '</div>' : '');
+            + (inner ? '<div class="bm-children"' + (isOpen ? '' : ' style="display:none;"') + '>' + inner + '</div>' : '');
         });
       node.files.slice().sort(function (x, y) {
         return String(x.name).localeCompare(String(y.name), 'ja');
       }).forEach(function (b) {
-        html += '<div class="bm-item" data-path="' + esc(b.path) + '" title="' + esc(b.path) + '">'
-          + '<span class="uh-icon">' + iconOf(b.name, b.dir) + '</span>'
+        // アイコンはツリーと同じ決まりにする（2026-09-27 本人指示）。
+        // フォルダは印を出さず帯にする。ファイルは .md と .html だけアイコンを出す。
+        // 場所は空でも空けておく（幅18pxを保たないと、行ごとに名前の始まりがずれる）
+        var bIsDir = !!b.dir, bExt = extOf(b.name);
+        var bIcon = bIsDir ? '' : (bExt === '.md' ? '📝' : (bExt === '.html' || bExt === '.htm' ? '🌐' : ''));
+        html += '<div class="bm-item' + (bIsDir ? ' bm-item-dir' : '') + '" data-path="' + esc(b.path) + '" title="' + esc(b.path) + '">'
+          + '<span class="uh-icon">' + bIcon + '</span>'
           + '<span class="bm-name">' + esc(b.name) + '</span>'
           + '<span class="bm-del" title="ブックマークから外す">×</span>'
           + '</div>';
@@ -1760,9 +1855,23 @@
       return;
     }
     var dirRow = e.target.closest('.bm-dir-row');
-    if (dirRow && dirRow.dataset.path) { revealBmFolder(dirRow.dataset.path); return; }
+    if (dirRow && dirRow.dataset.path) { bmToggleRow(dirRow); return; }   // ツリーと同じく開閉
     var item = e.target.closest('.bm-item');
     if (item) openBookmark(item.dataset.path);
+  });
+  // 右クリックのメニュー。押す動きを開閉にした分、ツリーへ飛ぶ道をここに置く（2026-09-27）
+  bmListEl.addEventListener('contextmenu', function (e) {
+    var row = e.target.closest ? e.target.closest('.bm-dir-row, .bm-item') : null;
+    if (!row || !row.dataset.path) return;
+    e.preventDefault();
+    var p = row.dataset.path;
+    var items = [{ label: '🔎 ツリーでこの場所を開く', run: function () { revealBmFolder(p); } }];
+    if (row.classList.contains('bm-item')) {
+      items.push({ label: '★ ブックマークから外す', run: function () {
+        toggleBm(p); flashMsg('★ ブックマークから外しました: ' + baseName(p));
+      } });
+    }
+    showCtxMenu(row.ownerDocument, e.clientX, e.clientY, items);
   });
   urlInput.addEventListener('input', updateBmBtn);
 
@@ -1825,6 +1934,19 @@
     var els = bmRowsFor(key);
     if (!els.length) return false;
     var el = els[0];
+    // 畳んである段の中にある行は、先にその段を開いてから寄せる（2026-09-27 開閉を付けたため）
+    var box = el.parentElement;
+    while (box && box !== bmListEl) {
+      if (box.classList.contains('bm-children') && box.style.display === 'none') {
+        box.style.display = 'block';
+        var head = box.previousElementSibling;
+        if (head && head.classList.contains('bm-dir-row')) {
+          head.dataset.open = 'true';
+          bmSetOpen(head.dataset.path, true);
+        }
+      }
+      box = box.parentElement;
+    }
     bmListEl.scrollTop += el.getBoundingClientRect().top - bmListEl.getBoundingClientRect().top;
     if (bmHitEl) bmHitEl.classList.remove('bm-hit');
     el.classList.add('bm-hit'); bmHitEl = el;
@@ -1932,7 +2054,8 @@
     doc.addEventListener('keydown', function (e) {
       var isF1 = (e.key === 'F1' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey);
       var isCtrlB = ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'b' || e.key === 'B'));
-      if (!isF1 && !isCtrlB) return;
+      var isEsc = (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey);
+      if (!isF1 && !isCtrlB && !isEsc) return;
       e.preventDefault();   // ブラウザ既定（F1のヘルプ等）を枠の中で止める
       document.dispatchEvent(new KeyboardEvent('keydown', {
         key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey,
@@ -2331,6 +2454,24 @@
       } catch (e) {}
     }
   })();
+
+  // Esc でビューアごと読み直す（2026-09-27 本人指示。Ctrl+F5 と同じことを1キーで）。
+  // URL に時刻を足して開き直すので、ブラウザの控えではなく all.html を取り直す。
+  // すでに Esc を使っている動き（メニュー・パス欄の履歴・本文検索の結果・編集中）があるときは何もしない
+  function hardReloadViewer() {
+    var q = '?t=' + Date.now() + (currentWin ? '&open=' + encodeURIComponent(currentWin) : '');
+    location.replace(location.pathname + q);
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    if (ctxCleanup) return;                                            // 右クリックのメニューが開いている
+    if (histEl && histEl.style.display !== 'none') return;             // パス欄の履歴が開いている
+    if (grepPanelEl && grepPanelEl.style.display !== 'none') return;   // 本文検索の結果が開いている
+    if (editor && editor.style.display !== 'none') return;             // 編集中
+    var t = e.target, tag = (t && t.tagName) ? t.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea') return;
+    hardReloadViewer();
+  });
 
   load();
 })();

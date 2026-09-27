@@ -319,6 +319,79 @@ def make_dir():
         return Response('NG: 作成に失敗しました（%s）' % e, status=500, mimetype='text/plain')
     return Response('OK: フォルダを作りました: ' + name, mimetype='text/plain')
 
+@app.route('/newfile.php', methods=['POST'])
+def make_file():
+    """右クリックメニューの「ここにファイルを作る」の窓口（2026-09-27 追加）。
+
+    安全の決まりは newfile.php（PHP版）と同じ:
+    作業フォルダの中だけ・既にある名前は断る・中身は空・削除はしない。
+    """
+    config = load_config()
+    if config is None:
+        return Response('NG: config not found', status=500, mimetype='text/plain')
+    root_n = norm(config['root'])
+    p = request.form.get('p', '')
+    name = request.form.get('name', '').strip()
+    if not p or not name:
+        return Response('NG: 親フォルダと名前が要ります', status=400, mimetype='text/plain')
+    if any(ch in BAD_NAME_CHARS for ch in name) or name in ('.', '..') or len(name) > 200:
+        return Response('NG: 名前に使えない文字が入っています', status=400, mimetype='text/plain')
+    p_n = norm(p)
+    if p_n != root_n and not p_n.startswith(root_n + '/'):
+        return Response('NG: 作業フォルダの外には作れません', status=403, mimetype='text/plain')
+    if not os.path.isdir(p):
+        return Response('NG: 親フォルダがありません', status=404, mimetype='text/plain')
+    real_n = norm(os.path.realpath(p))
+    if real_n != root_n and not real_n.startswith(root_n + '/'):
+        return Response('NG: 作業フォルダの外には作れません（実体）', status=403, mimetype='text/plain')
+    target = os.path.join(p, name)
+    if os.path.exists(target):
+        return Response('NG: 同じ名前のものが既にあります', status=409, mimetype='text/plain')
+    try:
+        with open(target, 'x', encoding='utf-8'):   # x は既にあれば失敗する（上書きしない）
+            pass
+    except OSError as e:
+        return Response('NG: 作成に失敗しました（%s）' % e, status=500, mimetype='text/plain')
+    return Response('OK: ファイルを作りました: ' + name, mimetype='text/plain')
+
+
+@app.route('/rename.php', methods=['POST'])
+def rename_path():
+    """右クリックメニューの「名前を変える」の窓口（2026-09-27 追加）。
+
+    安全の決まりは rename.php（PHP版）と同じ:
+    作業フォルダの中だけ・同じ場所のまま名前だけ変える・既にある名前は断る・削除はしない。
+    """
+    config = load_config()
+    if config is None:
+        return Response('NG: config not found', status=500, mimetype='text/plain')
+    root_n = norm(config['root'])
+    p = request.form.get('p', '')
+    name = request.form.get('name', '').strip()
+    if not p or not name:
+        return Response('NG: 対象と新しい名前が要ります', status=400, mimetype='text/plain')
+    if any(ch in BAD_NAME_CHARS for ch in name) or name in ('.', '..') or len(name) > 200:
+        return Response('NG: 名前に使えない文字が入っています', status=400, mimetype='text/plain')
+    p_n = norm(p)
+    if p_n == root_n:
+        return Response('NG: 作業フォルダ自体の名前は変えられません', status=403, mimetype='text/plain')
+    if not p_n.startswith(root_n + '/'):
+        return Response('NG: 作業フォルダの外のものは変えられません', status=403, mimetype='text/plain')
+    if not os.path.exists(p):
+        return Response('NG: そのファイル・フォルダがありません', status=404, mimetype='text/plain')
+    real_n = norm(os.path.realpath(p))
+    if not real_n.startswith(root_n + '/'):
+        return Response('NG: 作業フォルダの外のものは変えられません（実体）', status=403, mimetype='text/plain')
+    target = os.path.join(os.path.dirname(p), name)
+    if norm(target) != p_n and os.path.exists(target):
+        return Response('NG: 同じ名前のものが既にあります', status=409, mimetype='text/plain')
+    try:
+        os.rename(p, target)
+    except OSError as e:
+        return Response('NG: 名前を変えられませんでした（%s）' % e, status=500, mimetype='text/plain')
+    return Response('OK: 名前を変えました: ' + name, mimetype='text/plain')
+
+
 # ---------------------------------------------------------------- git 差分（読み取り専用）
 
 def run_git(args, cwd=None):
