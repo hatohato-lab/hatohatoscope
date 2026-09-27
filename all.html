@@ -218,7 +218,7 @@
   /* 行の見た目は下のツリー（エクスプローラ）と同じにする（2026-09-27 本人指示）。
      .tree-folder-name と同じ値を使う。フォルダの印の ▼📁 だけはブックマーク欄に残す */
   .bm-dir-row {
-    cursor: pointer; display: flex; align-items: center; gap: 4px;
+    cursor: pointer; display: flex; align-items: center;
     padding: 3px 6px; margin: 2px 0;
     user-select: none; white-space: nowrap;
     background: #ebedf0; border: 1px solid #dcdfe3; border-radius: 4px;
@@ -227,7 +227,7 @@
   }
   .bm-dir-row:hover { background: #dbe6f3; border-color: #b6cbe4; }
   .bm-dir-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
-  .bm-item { display: flex; align-items: center; gap: 5px; padding: 2px 0 2px 2px;
+  .bm-item { display: flex; align-items: center; padding: 2px 0 2px 2px;
     cursor: pointer; text-align: left; white-space: nowrap; }
   /* ブックマークしたフォルダそのものの行。ツリーのフォルダと同じ「浮いた帯」にする */
   .bm-item.bm-item-dir {
@@ -238,8 +238,7 @@
   .bm-item.bm-item-dir:hover { background: #dbe6f3; border-color: #b6cbe4; }
   .bm-item.bm-item-dir .bm-name { color: inherit; }
   .bm-item:hover { background: #e8e8e8; }
-  /* 絵文字は字ごとに幅が違う。固定幅にしないと行ごとに名前の開始位置がずれる */
-  .bm-item .uh-icon { flex: 0 0 18px; width: 18px; text-align: center; }
+
   /* min-width:0 が無いと、flexの子は中身より縮めず、長い名前が列幅を押し広げて×印がずれる */
   /* ファイル名はツリーの行とまったく同じ（太字にしない・色も同じ #1a4f8a） */
   .bm-name { flex: 1 1 auto; min-width: 0; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
@@ -1796,7 +1795,7 @@
         var bIcon = bIsDir ? '' : (bExt === '.md' ? '📝' : (bExt === '.html' || bExt === '.htm' ? '🌐' : ''));
         html += '<div class="bm-item' + (bIsDir ? ' bm-item-dir' : '') + '" data-path="' + esc(b.path) + '">'
           + '<span class="tree-c-copy" data-path="' + esc(b.path) + '" title="パスをコピー">c</span>'
-          + '<span class="uh-icon">' + bIcon + '</span>'
+          + (bIcon ? '<span class="tree-f-icon">' + bIcon + '</span>' : '')   // 空の枠を置かない（間が空いて見えるため）
           + '<span class="bm-name">' + esc(b.name) + '</span>'
           + '<span class="bm-del" title="ブックマークから外す">×</span>'
           + '</div>';
