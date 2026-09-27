@@ -1807,6 +1807,8 @@
     if (box && box.classList.contains('bm-children')) box.style.display = on ? 'block' : 'none';
     bmSetOpen(row.dataset.path, on);
     updateBmExpandBtn();
+    // 開閉と同時に、ツリーでも同じフォルダを開いて見せる（2026-09-27 戻した連動）
+    if (row.dataset.path) revealFolderInTree(row.dataset.path);
   }
 
   function renderBookmarks() {
@@ -1996,6 +1998,19 @@
     var row = c && c.closest('.tree-file');
     return row ? [row] : [];
   }
+  // 畳んである段の中の行は光っても見えない。その場合は、見えている親フォルダの行を代わりに光らせる
+  function bmVisibleTarget(el) {
+    if (el.offsetParent !== null) return el;
+    var box = el.parentElement;
+    while (box && box !== bmListEl) {
+      if (box.classList.contains('bm-children')) {
+        var head = box.previousElementSibling;
+        if (head && head.classList.contains('bm-dir-row') && head.offsetParent !== null) return head;
+      }
+      box = box.parentElement;
+    }
+    return null;
+  }
   function setXlink(path, from) {
     var key = pathKey(path);
     // どちらの欄から乗せたかも鍵に入れる。入れないと、ツリー→ブックマークへマウスを移したときに光る側が入れ替わらない
@@ -2003,7 +2018,7 @@
     if (mark === xlinkKey) return;
     clearXlink();
     if (!key) return;
-    var els = (from === 'tree') ? bmRowsFor(key) : treeRowsFor(path);
+    var els = (from === 'tree') ? bmRowsFor(key).map(bmVisibleTarget).filter(Boolean) : treeRowsFor(path);
     for (var i = 0; i < els.length; i++) els[i].classList.add('xlink');
     xlinkEls = els; xlinkKey = mark;
   }
