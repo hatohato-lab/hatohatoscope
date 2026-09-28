@@ -169,6 +169,10 @@
     margin-left: 8px; padding-left: 12px;
     border-left: 1px solid #c4c4c4;   /* 階層の縦ガイド線 */
   }
+  /* いま選んでいる行、またはマウスを乗せている行が入っているフォルダの縦線だけを目立たせる
+     （2026-09-28 本人承認）。太さは 1px のままにして影で 2px 分に見せる。
+     border-width を増やすと中身の位置が 1px ずれるため */
+  .tree-folder-content.guide-on { border-left-color: #1a4f8a; box-shadow: -1px 0 0 #1a4f8a; }
   /* 縦線から各項目へ伸びる横線（階層を見やすく） */
   .tree-folder-content > .tree-folder,
   .tree-folder-content > .tree-file { position: relative; }
@@ -495,6 +499,24 @@
       setTimeout(function () { copy.classList.remove('copied'); copy.textContent = 'c'; }, 1000);
     });
   }
+  // たどるべき縦線を1本だけ明るくする（2026-09-28 本人承認）。
+  // マウスを乗せている行を優先し、乗せていないときは選んでいる行を基準にする
+  var guideHoverRow = null;
+  function updateTreeGuide() {
+    var prev = treeEl.querySelectorAll('.tree-folder-content.guide-on');
+    for (var i = 0; i < prev.length; i++) prev[i].classList.remove('guide-on');
+    var row = guideHoverRow || treeEl.querySelector('a.viewlink.active');
+    if (!row || !row.closest) return;
+    var box = row.closest('.tree-folder-content');
+    if (box) box.classList.add('guide-on');
+  }
+  treeEl.addEventListener('mouseover', function (e) {
+    var r = e.target.closest ? e.target.closest('.tree-file, .tree-folder-name') : null;
+    if (r === guideHoverRow) return;
+    guideHoverRow = r;
+    updateTreeGuide();
+  });
+  treeEl.addEventListener('mouseleave', function () { guideHoverRow = null; updateTreeGuide(); });
   function onTreeClick(e) {
     // 押した行と同じパスのブックマーク行を、ブックマーク欄の一番上へ寄せる（2026-09-22 本人指示）
     revealBmRow(treeHoverPath(e.target));
@@ -1339,6 +1361,7 @@
         p = p.parentElement;
       }
       scrollTreeItemToTop(link);
+      updateTreeGuide();
       return true;
     }
     return false;
