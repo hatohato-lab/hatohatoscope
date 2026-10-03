@@ -76,6 +76,16 @@ flowchart LR
 上のクイックスタートのとおり。追加の閲覧フォルダが必要なら
 `api/roots.example.json` → `api/roots.json` も同様にコピーして書く。
 
+XAMPP版と同じ URL（`http://localhost/mydocs/all.html` など）で開きたいときは、
+`api/config.json` に次の2行を足す。URL の頭の名前を外して同じ窓口につなぐだけなので、all.html は変えなくてよい。
+
+```
+"port": 80,
+"urlPrefixes": ["/mydocs", "/hatohatoscope"]
+```
+
+ポート80を使うので、XAMPP の Apache とは同時に動かせない。どちらか片方だけを起動する。
+
 ### 方法B: XAMPP（Apache + PHP）
 
 | 手順 | 内容 |
