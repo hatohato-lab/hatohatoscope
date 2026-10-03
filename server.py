@@ -10,6 +10,8 @@ PHP 版（api/*.php・serve.php 等）と同じ仕様の窓口を、Python + Fla
     2) pip install flask
     3) python server.py
     4) ブラウザで http://localhost:8765/all.html
+       （config.json の port を 80 に、urlPrefixes を ["/mydocs"] にすると、
+         XAMPP 版と同じ http://localhost/mydocs/all.html でも開ける）
 
 セキュリティ上の前提は README のとおり: 認証は無く、127.0.0.1 限定の待受だけが守り。
 """
@@ -65,6 +67,40 @@ def under_allowed(path_n, roots):
 
 
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
+# ---------------------------------------------------------------- URL の頭の名前（/mydocs/ 等）
+
+class StripPrefix:
+    """/mydocs/all.html のように、頭に名前が付いた URL でも同じ窓口につなぐ（2026-09-29 追加）。
+
+    XAMPP 版の URL（/mydocs/・/hatohatoscope/）を Flask 版でもそのまま使うためのもの。
+    all.html は窓口を相対パスで呼ぶので、頭の名前を外せば既存のルートがそのまま当たる。
+    名前は config.json の urlPrefixes で指定する（無ければ何もしない）。
+    """
+
+    def __init__(self, wsgi_app, prefixes):
+        self.wsgi_app = wsgi_app
+        if not isinstance(prefixes, (list, tuple)):   # null や文字列の書き間違いで起動を止めない
+            prefixes = []
+        self.prefixes = ['/' + p.strip('/') for p in prefixes if isinstance(p, str) and p.strip('/')]
+
+    def __call__(self, environ, start_response):
+        path = environ.get('PATH_INFO', '')
+        low = path.lower()
+        for pre in self.prefixes:
+            if low == pre.lower():
+                # 末尾の / が無いときは Apache と同じく / 付きへ転送する（相対パスの基点を /mydocs/ にそろえる）
+                qs = environ.get('QUERY_STRING', '')
+                start_response('301 Moved Permanently', [('Location', path + '/' + ('?' + qs if qs else ''))])
+                return [b'']
+            if low.startswith(pre.lower() + '/'):
+                environ['SCRIPT_NAME'] = environ.get('SCRIPT_NAME', '') + path[:len(pre)]
+                environ['PATH_INFO'] = path[len(pre):]
+                break
+        return self.wsgi_app(environ, start_response)
+
+
+app.wsgi_app = StripPrefix(app.wsgi_app, (load_config() or {}).get('urlPrefixes'))
 
 # ---------------------------------------------------------------- 画面と静的ファイル
 
@@ -764,6 +800,9 @@ def puml():
 if __name__ == '__main__':
     config = load_config()
     port = int(config.get('port', 8765)) if config else 8765
-    print('hatohatoscope (Flask) : http://localhost:%d/all.html' % port)
+    host = 'localhost' if port == 80 else 'localhost:%d' % port
+    print('hatohatoscope (Flask) : http://%s/all.html' % host)
+    for pre in app.wsgi_app.prefixes:
+        print('                        http://%s%s/all.html' % (host, pre))
     # 認証なしのため 127.0.0.1 限定は絶対に変えない（README のセキュリティ前提）
     app.run(host='127.0.0.1', port=port, threaded=True)
