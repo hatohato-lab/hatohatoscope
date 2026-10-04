@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""hatohatoscope の Flask 版サーバー。
+"""hatohatoscope のサーバー（Python + Flask）。
 
-PHP 版（api/*.php・serve.php 等）と同じ仕様の窓口を、Python + Flask だけで提供する。
-画面（all.html）は同じものをそのまま使う。どちらのサーバーでも動く。
+画面（all.html）が呼ぶ窓口（ツリー・配信・保存・git・全文検索・図・ブックマーク）をすべて提供する。
 
 使い方:
     1) api/config.example.json を api/config.json にコピーして root を書き換える
@@ -11,7 +10,7 @@ PHP 版（api/*.php・serve.php 等）と同じ仕様の窓口を、Python + Fla
     3) python server.py
     4) ブラウザで http://localhost:8765/all.html
        （config.json の port を 80 に、urlPrefixes を ["/mydocs"] にすると、
-         XAMPP 版と同じ http://localhost/mydocs/all.html でも開ける）
+         http://localhost/mydocs/all.html でも開ける）
 
 セキュリティ上の前提は README のとおり: 認証は無く、127.0.0.1 限定の待受だけが守り。
 """
@@ -48,7 +47,7 @@ def load_roots():
 
 
 def norm(p):
-    """比較用の正規化（区切りを / に・小文字化）。PHP版と同じ字句比較方針。"""
+    """比較用の正規化（区切りを / に・小文字化）。"""
     return p.replace('\\', '/').rstrip('/').lower()
 
 
@@ -73,7 +72,7 @@ UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 class StripPrefix:
     """/mydocs/all.html のように、頭に名前が付いた URL でも同じ窓口につなぐ（2026-09-29 追加）。
 
-    XAMPP 版の URL（/mydocs/・/hatohatoscope/）を Flask 版でもそのまま使うためのもの。
+    以前から使っている URL（/mydocs/・/hatohatoscope/）を、そのまま使い続けるためのもの。
     all.html は窓口を相対パスで呼ぶので、頭の名前を外せば既存のルートがそのまま当たる。
     名前は config.json の urlPrefixes で指定する（無ければ何もしない）。
     """
@@ -89,7 +88,7 @@ class StripPrefix:
         low = path.lower()
         for pre in self.prefixes:
             if low == pre.lower():
-                # 末尾の / が無いときは Apache と同じく / 付きへ転送する（相対パスの基点を /mydocs/ にそろえる）
+                # 末尾の / が無いときは / 付きへ転送する（相対パスの基点を /mydocs/ にそろえる）
                 qs = environ.get('QUERY_STRING', '')
                 start_response('301 Moved Permanently', [('Location', path + '/' + ('?' + qs if qs else ''))])
                 return [b'']
@@ -173,7 +172,7 @@ def scan_directory(path, exclude, max_depth, depth=0, exclude_files=(), dcache=N
             size_of[name] = sz
     for item in folders:
         full = path + '/' + item
-        # 価値ある深い枝(projects/memory)だけ深く辿る（PHP版と同じ特例）
+        # 価値ある深い枝(projects/memory)だけ深く辿る
         child_max = depth + 6 if (max_depth > 0 and item in ('projects', 'memory')) else max_depth
         result.append({
             'name': item,
@@ -186,7 +185,7 @@ def scan_directory(path, exclude, max_depth, depth=0, exclude_files=(), dcache=N
     return result
 
 
-@app.route('/api/file_tree.php')
+@app.route('/api/file_tree')
 def file_tree():
     config = load_config()
     if config is None:
@@ -255,7 +254,7 @@ CONTENT_TYPES = {
 }
 
 
-@app.route('/serve.php')
+@app.route('/serve')
 def serve_file():
     config = load_config()
     if config is None:
@@ -291,7 +290,7 @@ SAVE_EXTS = {'md', 'txt', 'json', 'py', 'php', 'js', 'css', 'html', 'htm', 'xml'
              'yml', 'yaml', 'sql', 'sh', 'bat', 'puml', 'ini', 'env', 'gitignore'}
 
 
-@app.route('/save.php', methods=['POST'])
+@app.route('/save', methods=['POST'])
 def save_file():
     config = load_config()
     if config is None:
@@ -321,11 +320,11 @@ def save_file():
 BAD_NAME_CHARS = set('\\/:*?"<>|')
 
 
-@app.route('/mkdir.php', methods=['POST'])
+@app.route('/mkdir', methods=['POST'])
 def make_dir():
     """右クリックメニューの「ここにフォルダを作る」の窓口（2026-09-20 追加）。
 
-    安全の決まりは mkdir.php（PHP版）と同じ:
+    安全の決まり:
     作業フォルダの中だけ・1階層だけ・既にある名前は断る・削除はしない。
     """
     config = load_config()
@@ -355,11 +354,11 @@ def make_dir():
         return Response('NG: 作成に失敗しました（%s）' % e, status=500, mimetype='text/plain')
     return Response('OK: フォルダを作りました: ' + name, mimetype='text/plain')
 
-@app.route('/newfile.php', methods=['POST'])
+@app.route('/newfile', methods=['POST'])
 def make_file():
     """右クリックメニューの「ここにファイルを作る」の窓口（2026-09-27 追加）。
 
-    安全の決まりは newfile.php（PHP版）と同じ:
+    安全の決まり:
     作業フォルダの中だけ・既にある名前は断る・中身は空・削除はしない。
     """
     config = load_config()
@@ -391,11 +390,11 @@ def make_file():
     return Response('OK: ファイルを作りました: ' + name, mimetype='text/plain')
 
 
-@app.route('/rename.php', methods=['POST'])
+@app.route('/rename', methods=['POST'])
 def rename_path():
     """右クリックメニューの「名前を変える」の窓口（2026-09-27 追加）。
 
-    安全の決まりは rename.php（PHP版）と同じ:
+    安全の決まり:
     作業フォルダの中だけ・同じ場所のまま名前だけ変える・既にある名前は断る・削除はしない。
     """
     config = load_config()
@@ -439,7 +438,7 @@ def run_git(args, cwd=None):
         return 'fatal: ' + str(e)
 
 
-@app.route('/git_diff.php')
+@app.route('/git_diff')
 def git_diff():
     config = load_config()
     if config is None:
@@ -512,7 +511,7 @@ def find_repos(d, exclude, depth):
     return repos
 
 
-@app.route('/git_status.php')
+@app.route('/git_status')
 def git_status():
     if os.path.isfile(GS_CACHE) and time.time() - os.path.getmtime(GS_CACHE) < 90:
         with open(GS_CACHE, encoding='utf-8') as f:
@@ -632,7 +631,7 @@ def fts_save_manifest(m):
         json.dump(m, f)
 
 
-@app.route('/api/fts.php')
+@app.route('/api/fts')
 def fts():
     config = load_config()
     if config is None:
@@ -750,7 +749,7 @@ def fts():
 PUML_CACHE_DIR = os.path.join(tempfile.gettempdir(), 'hhscope_py_puml')
 
 
-@app.route('/api/puml.php')
+@app.route('/api/puml')
 def puml():
     config = load_config()
     if config is None:
@@ -793,6 +792,54 @@ def puml():
     except OSError:
         pass
     return Response(svg, mimetype='image/svg+xml', headers={'X-Puml': 'fresh'})
+
+# ---------------------------------------------------------------- ブックマーク
+
+BM_FILE = os.path.join(BASE_DIR, 'api', 'bookmarks.json')
+BM_MAX_ITEMS = 2000
+
+
+@app.route('/api/bookmarks', methods=['GET', 'POST'])
+def bookmarks():
+    """ブックマークの読み書き（2026-10-04 追加）。置き場は api/bookmarks.json（git 管理外）。
+
+    ブラウザの localStorage だけに置くと、ブラウザのデータを消したときに一緒に消えるため、ファイルに置く。
+    書けるのはこの1ファイルだけで、中身は {path, name, dir} の並びに限る。
+    GET は {"exists": ファイルがあるか, "items": 並び} を返す。ファイルが無いときは画面側が手元の分を書き出す。
+    """
+    if request.method == 'GET':
+        if not os.path.isfile(BM_FILE):
+            return Response(json.dumps({'exists': False, 'items': []}), mimetype='application/json')
+        try:
+            with open(BM_FILE, encoding='utf-8') as f:
+                items = json.load(f)
+        except (OSError, ValueError):
+            return Response('NG: bookmarks.json is broken', status=500, mimetype='text/plain')
+        if not isinstance(items, list):
+            items = []
+        return Response(json.dumps({'exists': True, 'items': items}, ensure_ascii=False),
+                        mimetype='application/json')
+    try:
+        items = json.loads(request.form.get('body', ''))
+    except ValueError:
+        return Response('NG: not json', status=400, mimetype='text/plain')
+    if not isinstance(items, list) or len(items) > BM_MAX_ITEMS:
+        return Response('NG: not a list', status=400, mimetype='text/plain')
+    clean = []
+    for b in items:
+        if not isinstance(b, dict) or not isinstance(b.get('path'), str) or not b['path']:
+            return Response('NG: bad item', status=400, mimetype='text/plain')
+        name = b.get('name')
+        clean.append({'path': b['path'], 'name': name if isinstance(name, str) else '', 'dir': bool(b.get('dir'))})
+    # 書きかけで落ちても元のファイルが壊れないよう、別名に書いてから差し替える
+    tmp = BM_FILE + '.tmp'
+    try:
+        with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
+            json.dump(clean, f, ensure_ascii=False, indent=4)
+        os.replace(tmp, BM_FILE)
+    except OSError:
+        return Response('NG: write failed', status=500, mimetype='text/plain')
+    return Response('OK: %d bookmarks saved' % len(clean), mimetype='text/plain')
 
 
 # ---------------------------------------------------------------- 起動

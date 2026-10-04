@@ -8,11 +8,13 @@ Thumbs.db
 01_調査/
 00_設計書/
 
-# ローカル環境ごとの設定（見本は api/config.example.*・api/roots.example.*）
-api/config.php
-api/roots.php
+# ローカル環境ごとの設定（見本は api/config.example.json・api/roots.example.json）
 api/config.json
 api/roots.json
+
+# 使う人ごとのブックマーク（個人のパスを含む。server.py の api/bookmarks が読み書きする）
+api/bookmarks.json
+api/bookmarks.json.tmp
 
 # 使う人ごとのAI運用設定（各自のものを置く）
 CLAUDE.md

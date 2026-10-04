@@ -118,8 +118,12 @@
   #fileTitleName { display: block; font-size: 17px; font-weight: bold; color: #1a1a1a;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* 2段目の場所は1階層1行の階段で出す（2026-10-03 本人指示。1行に詰めると、長いフォルダ名が続いたとき切れて読めない） */
-  #fileTitleDir { display: block; font-size: 12px; color: #555; line-height: 1.45; }
+  /* 字の大きさは 12px では読みにくかったため 15px にした（2026-10-04 本人指示） */
+  #fileTitleDir { display: block; font-size: 15px; color: #555; line-height: 1.45; }
   #fileTitleDir .dir-step { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 各階層はリンク。押すとツリーでそのフォルダまで開く（2026-10-03 本人指示） */
+  #fileTitleDir a.dir-link { color: #1a4f8a; text-decoration: underline; cursor: pointer; }
+  #fileTitleDir a.dir-link:hover { background: #e8eefc; }
   /* 本文と目次を横に並べる箱（2026-09-19 変更。目次を重ねずに左へ置くため flex にした） */
   .viewer-area { flex: 1; position: relative; display: flex; min-height: 0; min-width: 0; }
   /* 目次ペイン（開いたMarkdown/HTMLの見出し一覧）。order:-1 で本文より左に出す。
@@ -351,8 +355,8 @@
 <script>
 (function () {
   // この all.html は http://localhost/mydocs/all.html で開く想定。
-  // 表示対象のルートはサーバー側（api/config.php）で決まる。フロントはパスを持たない。
-  var API = 'api/file_tree.php?root=1';
+  // 表示対象のルートはサーバー側（api/config.json）で決まる。フロントはパスを持たない。
+  var API = 'api/file_tree?root=1';
 
   // 画像（枠の幅に収めて表示する。2026-09-19 追加：.jpeg 等が灰色で開けなかったため）
   var IMG_EXT = ['.png','.jpg','.jpeg','.gif','.webp','.bmp','.ico'];
@@ -427,10 +431,10 @@
     });
   }
 
-  // Windowsフルパス → serve.php 経由のURL。
-  // Apacheの DocumentRoot/Alias 制約を受けず、PHPがディスクから直接読む。
+  // Windowsフルパス → serve 経由のURL。
+  // サーバー（server.py）がディスクから直接読むので、公開フォルダの制約を受けない。
   function toUrl(winPath) {
-    return 'serve.php?p=' + encodeURIComponent(winPath);
+    return 'serve?p=' + encodeURIComponent(winPath);
   }
 
   function iconOf(name, isDir) {
@@ -592,7 +596,7 @@
     var body = new URLSearchParams();
     body.append('p', parent);
     body.append('name', name);
-    fetch('mkdir.php', { method: 'POST', body: body })
+    fetch('mkdir', { method: 'POST', body: body })
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
       .then(function (res) {
         if (!res.ok) { flashMsg(res.t, '#c00'); return; }
@@ -613,7 +617,7 @@
     var body = new URLSearchParams();
     body.append('p', parent);
     body.append('name', name);
-    fetch('newfile.php', { method: 'POST', body: body })
+    fetch('newfile', { method: 'POST', body: body })
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
       .then(function (res) {
         if (!res.ok) { flashMsg(res.t, '#c00'); return; }
@@ -646,7 +650,7 @@
     var body = new URLSearchParams();
     body.append('p', target);
     body.append('name', name);
-    fetch('rename.php', { method: 'POST', body: body })
+    fetch('rename', { method: 'POST', body: body })
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
       .then(function (res) {
         if (!res.ok) { flashMsg(res.t, '#c00'); return; }
@@ -686,27 +690,57 @@
   });
 
   // 場所を1階層1行の階段で出す。2階層目からは頭に └ を付け、1段ごとに字下げを深くする
-  function renderDirSteps(box, rel) {
-    rel = String(rel || '');
+  // 各階層はリンクにし、押した先の絶対パスを data-path に持たせる（2026-10-03 本人指示）
+  function renderDirSteps(box, winPath) {
+    var rel = String(bmRelDir(winPath) || '');
     box.textContent = '';
+    box.title = rel;   // 字が切れたときも、マウスを乗せれば全体が読める
+    var dir = dirName(winPath);
+    var root = (treeRootPath || '').replace(/[\\/]+$/, '');
+    if (root && dir.toLowerCase() === root.toLowerCase()) {   // 作業フォルダの直下は、押す先の階層が無いので文字だけ出す
+      var only = document.createElement('div');
+      only.className = 'dir-step';
+      only.textContent = rel;
+      box.appendChild(only);
+      return;
+    }
     var parts = rel.split(/[\\\/]+/).filter(function (s) { return s; });
-    if (!parts.length) parts = [rel];
+    var absParts = dir.split(/[\\\/]+/).filter(function (s) { return s; });
+    var unc = /^[\\\/]{2}/.test(dir) ? '\\\\' : '';
+    var skip = absParts.length - parts.length;   // 作業フォルダまでの手前の段数（作業フォルダの外なら 0）
     parts.forEach(function (name, i) {
       var line = document.createElement('div');
       line.className = 'dir-step';
       line.style.paddingLeft = (Math.max(0, i - 1) * 1.3) + 'em';
-      line.textContent = (i === 0 ? '' : '└ ') + name;
+      if (i > 0) line.appendChild(document.createTextNode('└ '));
+      var a = document.createElement('a');
+      a.className = 'dir-link';
+      a.textContent = name;
+      a.dataset.path = unc + absParts.slice(0, skip + i + 1).join('\\');
+      line.appendChild(a);
       box.appendChild(line);
     });
-    box.title = rel;   // 字が切れたときも、マウスを乗せれば全体が読める
   }
+  // 階層のリンクを押したら、ツリーでそのフォルダまで開く。ツリーにまだ無ければ再スキャンしてから開く
+  var fileTitleDirEl = document.getElementById('fileTitleDir');
+  if (fileTitleDirEl) fileTitleDirEl.addEventListener('click', function (e) {
+    var a = e.target.closest ? e.target.closest('a.dir-link') : null;
+    if (!a || !a.dataset.path) return;
+    e.preventDefault();
+    var p = a.dataset.path;
+    if (revealFolderInTree(p)) return;
+    flashMsg('フォルダをスキャン中...', '#888');
+    refreshTree(function () {
+      if (!revealFolderInTree(p)) flashMsg('ツリーにこのフォルダが見つかりません（除外対象の可能性）', '#c00');
+    });
+  });
 
   // ビューア上部にファイル名を大きく表示する（場所は作業フォルダ以降を添える）
   function showFileTitle(winPath, prefix) {
     var box = document.getElementById('fileTitle');
     if (!box) return;
     document.getElementById('fileTitleName').textContent = (prefix || '') + baseName(winPath);
-    renderDirSteps(document.getElementById('fileTitleDir'), bmRelDir(winPath));
+    renderDirSteps(document.getElementById('fileTitleDir'), winPath);
     box.style.display = 'block';   // 2段組みなので block（flexだと横並びに戻る）
   }
 
@@ -772,7 +806,7 @@
       iframe.removeAttribute('srcdoc'); iframe.src = url + '&t=' + Date.now(); return;
     }
     if (ext === '.puml') {
-      // まずローカルの plantuml.jar でその場描画（api/puml.php・キャッシュ付き 2026-08-29）。
+      // まずローカルの plantuml.jar でその場描画（api/puml・キャッシュ付き 2026-08-29）。
       // jar が無い環境では従来どおり：同じ場所の _svg\<名前>.svg → 無ければソース表示
       var svgWin = winPath.replace(/\\([^\\]+)\.puml$/i, '\\_svg\\$1.svg');
       function pumlShow(svg) {
@@ -790,7 +824,7 @@
           });
         });
       }
-      fetch('api/puml.php?p=' + encodeURIComponent(winPath) + '&t=' + Date.now()).then(function (r0) {
+      fetch('api/puml?p=' + encodeURIComponent(winPath) + '&t=' + Date.now()).then(function (r0) {
         return r0.ok ? r0.text() : null;
       }).then(function (svg0) {
         if (svg0) { pumlShow(svg0); return; }
@@ -800,7 +834,7 @@
     }
     if (IMG_EXT.indexOf(ext) >= 0) {
       // 画像は枠の幅に収めて表示する（生のまま出すと原寸で横にはみ出す）。
-      // srcdoc は親ページと同じ基点なので、相対URLの serve.php でそのまま届く
+      // srcdoc は親ページと同じ基点なので、相対URLの serve でそのまま届く
       iframe.removeAttribute('src');
       iframe.srcdoc = '<html><head><meta charset="UTF-8"></head>'
         + '<body style="margin:0;padding:10px;background:#6b6b6b;text-align:center">'
@@ -1045,7 +1079,7 @@
     revealInTree(p);
   });
 
-  // serve.php経由で表示したHTML（同一オリジン）にも、読み込み後にリンク振り分けを仕込む。
+  // serve 経由で表示したHTML（同一オリジン）にも、読み込み後にリンク振り分けを仕込む。
   // 外部URLは新しいタブ、ファイルへの相対リンクはビューア自身で開く
   iframe.addEventListener('load', function () {
     if (!iframe.getAttribute('src')) return;   // srcdoc表示は各テンプレ側のスクリプトが担当
@@ -1077,7 +1111,7 @@
     var out = '';
     for (var i = 0; i < lines.length; i++) {
       var ln = lines[i], cls = '';
-      if (/^# /.test(ln)) cls = 'dh';                            // git_diff.php の見出し行
+      if (/^# /.test(ln)) cls = 'dh';                            // git_diff の見出し行
       else if (/^\?\? /.test(ln)) cls = 'da';                    // status: 未追跡ファイル
       else if (/^(!!|[ MADRCU][MADRCU]) /.test(ln)) cls = 'dk';  // status: 変更ファイル
       else if (/^\+\+\+ |^--- /.test(ln)) cls = 'dh';
@@ -1157,7 +1191,7 @@
 
   // ===== gitの状態でツリーに色をつける（VS Code風：変更=オレンジ・新規=緑） =====
   function applyGitStatus() {
-    fetch('git_status.php?t=' + Date.now()).then(function (r) { return r.json(); }).then(function (data) {
+    fetch('git_status?t=' + Date.now()).then(function (r) { return r.json(); }).then(function (data) {
       if (!data || !data.files) return;
       var files = {};
       var dirs = {};   // 変更を含むフォルダ（modが優先）
@@ -1223,7 +1257,7 @@
       // （従来は5分キャッシュのため、新規ファイルは「更新」を押すまでツリーに出なかった）
       if (res.hit) refreshTree(); else lastRefreshAt = Date.now();
     }).catch(function (e) {
-      treeEl.innerHTML = '<div class="loading">読込エラー（XAMPPが起動しているか、http://localhost/mydocs/all.html で開いているか確認）</div>';
+      treeEl.innerHTML = '<div class="loading">読込エラー（server.py が起動しているか、http://localhost/mydocs/all.html で開いているか確認）</div>';
     });
   }
 
@@ -1272,7 +1306,7 @@
     exitEdit();
     iframe.style.display = 'block';
     document.getElementById('editBtn').style.display = 'none';
-    fetch('git_diff.php?p=' + encodeURIComponent(p) + '&t=' + Date.now())
+    fetch('git_diff?p=' + encodeURIComponent(p) + '&t=' + Date.now())
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
       .then(function (res) {
         iframe.removeAttribute('src');
@@ -1720,13 +1754,56 @@
   });
 
   // ===== ブックマーク（よく使うファイル・フォルダを上部に固定して一発で開く） =====
-  // 置き場はブラウザ内（localStorage）。開いたフォルダ・履歴・表示モードと同じ扱い。
+  // 置き場はファイル（api/bookmarks.json）。ブラウザ内（localStorage）だけだと、ブラウザのデータを
+  // 消したときに一緒に消えたため、2026-10-04 にファイルへ移した（本人指示）。
+  // 画面の処理は getBm() を同期で呼ぶので、localStorage は手元の写しとして残し、変えるたびにファイルへも書く。
+  // 起動時はファイルの中身で写しを上書きする（loadBmFile）。
   // ツリーの全行（2万件超）にボタンを置くと重くなるため、登録は上部の★ボタンで行い、
   // ツリー側は登録済みの行にだけ★印を後から付ける。
   var BM_KEY = 'allViewerBookmarks';
 
   function getBm() { try { return JSON.parse(localStorage.getItem(BM_KEY)) || []; } catch (e) { return []; } }
-  function setBm(a) { try { localStorage.setItem(BM_KEY, JSON.stringify(a)); } catch (e) {} }
+  function setBm(a) { try { localStorage.setItem(BM_KEY, JSON.stringify(a)); } catch (e) {} saveBmFile(a); }
+  // ファイルへの書き出し。失敗したら上の欄に出す（黙って失うと、また消えたことに気づけない）
+  function saveBmFile(a) {
+    var body = new URLSearchParams();
+    body.append('body', JSON.stringify(a));
+    fetch('api/bookmarks', { method: 'POST', body: body })
+      .then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { flashMsg('ブックマークをファイルに保存できませんでした: ' + t, '#c00'); });
+      })
+      .catch(function () { flashMsg('ブックマークをファイルに保存できませんでした', '#c00'); });
+  }
+  // 起動時にファイルから読む。ファイルがまだ無く、ブラウザ側にだけあるときは、それをファイルへ書き出して引き継ぐ
+  // このブラウザで初めて読むときだけは、ブラウザ側にしか無い分をファイルに足す（ファイル化の前に登録した分を失わないため）。
+  // 2回目からはファイルが正で、ブラウザ側の写しはファイルの中身で上書きする
+  var BM_MIGRATED_KEY = 'allViewerBmFileMigrated';
+  function loadBmFile() {
+    fetch('api/bookmarks?t=' + Date.now())
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var migrated = false;
+        try { migrated = localStorage.getItem(BM_MIGRATED_KEY) === '1'; } catch (e) {}
+        if (d.exists && Array.isArray(d.items)) {
+          var items = d.items;
+          if (!migrated) {
+            var have = {};
+            items.forEach(function (b) { if (b && b.path) have[String(b.path).toLowerCase()] = true; });
+            var extra = getBm().filter(function (b) { return b && b.path && !have[String(b.path).toLowerCase()]; });
+            if (extra.length) { items = items.concat(extra); saveBmFile(items); }
+          }
+          try { localStorage.setItem(BM_KEY, JSON.stringify(items)); } catch (e) {}
+          renderBookmarks();
+          markTreeBookmarks();
+          updateBmBtn();
+        } else if (!d.exists && getBm().length) {
+          saveBmFile(getBm());
+        }
+        try { localStorage.setItem(BM_MIGRATED_KEY, '1'); } catch (e) {}
+      })
+      .catch(function () {});
+  }
   function isBm(p) {
     var lp = (p || '').toLowerCase();
     return getBm().some(function (b) { return b.path.toLowerCase() === lp; });
@@ -2063,6 +2140,7 @@
   bmListEl.addEventListener('mouseleave', clearXlink);
 
   renderBookmarks();
+  loadBmFile();   // ファイルの中身で描き直す（ブラウザのデータを消しても戻るように）
 
   // ブックマーク欄の高さをドラッグで変更（高さは記憶する）
   (function () {
@@ -2216,7 +2294,7 @@
     }
   });
 
-  // ===== 全文検索（本文検索）。索引方式：api/fts.php =====
+  // ===== 全文検索（本文検索）。索引方式：api/fts =====
   // 入り口は左メニューの専用欄（#grepInput・Enterで実行）。ファイル名検索とは完全に別扱い。
   // 結果は左の専用パネル（#grepPanel）に「ファイル名＋場所＋ヒット行」で一覧し、クリックで開く。
   var grepPanelEl = document.getElementById('grepPanel');
@@ -2245,7 +2323,7 @@
   }
 
   function runGrepBuild(q) {
-    fetch('api/fts.php?op=build&t=' + Date.now())
+    fetch('api/fts?op=build&t=' + Date.now())
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.remaining > 0) {
@@ -2265,7 +2343,7 @@
     if (grepBgBusy) return;
     grepBgBusy = true;
     (function step(rounds) {
-      fetch('api/fts.php?op=build&t=' + Date.now())
+      fetch('api/fts?op=build&t=' + Date.now())
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d.remaining > 0 && rounds < 30) step(rounds + 1);
@@ -2281,7 +2359,7 @@
     document.getElementById('grepInput').value = q;
     hideHistory();   // 上の候補リストから来た場合は閉じる
     grepMsg('「' + q + '」を検索中…');
-    fetch('api/fts.php?op=search&q=' + encodeURIComponent(q) + '&t=' + Date.now())
+    fetch('api/fts?op=search&q=' + encodeURIComponent(q) + '&t=' + Date.now())
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.need_build) { runGrepBuild(q); return; }
@@ -2339,7 +2417,7 @@
     var body = new URLSearchParams();
     body.append('p', currentWin);
     body.append('body', editor.value);
-    fetch('save.php', { method: 'POST', body: body })
+    fetch('save', { method: 'POST', body: body })
       .then(function (r) { return r.text().then(function(t){ return {ok:r.ok, t:t}; }); })
       .then(function (res) {
         if (res.ok) { msg.style.color = '#178a3a'; msg.textContent = '保存しました (' + res.t + ')'; }
