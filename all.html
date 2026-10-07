@@ -138,6 +138,16 @@
   .ol-l3 { padding-left: 30px; font-size: 12px; }
   #outlineBtn { flex: 0 0 auto; font-size: 12px; padding: 3px 8px; cursor: pointer; display: none; }
   #outlineBtn.on { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
+  /* 最大化（2026-10-07 本人指示）。表示中のファイルだけを画面いっぱいに出す。
+     左のメニュー・パス欄・ファイル名の帯・目次を隠し、右上の「元に戻す」か Esc で戻す */
+  #maxBtn { font-size: 12px; padding: 3px 8px; cursor: pointer; margin-left: 4px; }
+  #restoreBtn { display: none; position: fixed; top: 8px; right: 14px; z-index: 10000;
+    font-size: 14px; padding: 4px 12px; cursor: pointer; background: #fff; color: #000;
+    border: 1px solid #999; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+  #restoreBtn:hover { background: #e8eefc; }
+  body.maximized .menu, body.maximized .dragbar, body.maximized .url-bar,
+  body.maximized #fileTitle, body.maximized #outlinePane { display: none !important; }
+  body.maximized #restoreBtn { display: block; }
   /* 本文側は残りの幅いっぱい。flex-basis:0 にして目次の有無で自動的に幅が決まるようにする */
   #viewer { flex: 1 1 0; min-width: 0; height: 100%; border: none; }
   .placeholder { flex: 1 1 0; min-width: 0; padding: 30px; color: #666; }
@@ -288,6 +298,7 @@
 </head>
 <body>
 <div id="hoverTip"></div>
+<button id="restoreBtn" title="元の画面に戻す（Esc）">元に戻す</button>
 <div class="container">
   <nav class="menu">
     <div class="menu-header">
@@ -338,6 +349,7 @@
     <div class="file-title" id="fileTitle" style="display:none;">
       <span id="fileTitleName"></span><span id="fileTitleDir"></span>
       <button id="outlineBtn" title="目次の表示 / 非表示">目次</button>
+      <button id="maxBtn" title="表示中のファイルを画面いっぱいに広げる（右上の「元に戻す」か Esc で戻る）">最大化</button>
     </div>
     <div class="viewer-area">
       <div class="placeholder" id="placeholder">メニューからファイルを選ぶと、ここに表示されます。</div>
@@ -2621,6 +2633,15 @@
     });
   })();
 
+  // ===== 最大化（2026-10-07 本人指示） =====
+  // 表示中のファイルだけを画面いっぱいに出す。左のメニュー・パス欄・ファイル名の帯・目次は CSS（body.maximized）で隠す。
+  // 戻すのは右上の「元に戻す」か Esc。Esc はふだん「ビューアごと読み直す」なので、最大化の間だけ戻す方を先に効かせる
+  // （下の Esc の処理の先頭を参照）。読み直したときは最大化しない状態で開く（記憶しない）
+  function isMaximized() { return document.body.classList.contains('maximized'); }
+  function setMaximized(on) { document.body.classList.toggle('maximized', !!on); }
+  document.getElementById('maxBtn').addEventListener('click', function () { setMaximized(true); });
+  document.getElementById('restoreBtn').addEventListener('click', function () { setMaximized(false); });
+
   // URLで直接ファイルを開く: all.html?open=<Windowsフルパス(encodeURIComponent)>
   (function () {
     var m = location.search.match(/[?&]open=([^&]+)/);
@@ -2642,6 +2663,7 @@
   }
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    if (isMaximized()) { setMaximized(false); return; }                // 最大化の間は、読み直さずに元の画面に戻す
     if (ctxCleanup) return;                                            // 右クリックのメニューが開いている
     if (histEl && histEl.style.display !== 'none') return;             // パス欄の履歴が開いている
     if (grepPanelEl && grepPanelEl.style.display !== 'none') return;   // 本文検索の結果が開いている
