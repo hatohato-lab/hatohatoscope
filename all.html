@@ -1185,7 +1185,7 @@
     // その場合はスクロール復元をせず、そのファイルを一番上に出す（2026-09-05 修正）
     var revealedNow = false;
     if (pendingRevealPath) {
-      revealedNow = revealInTree(pendingRevealPath);
+      revealedNow = revealInTreeFolderTop(pendingRevealPath);   // パス入力や右クリックで開いたファイルなので、フォルダを上にそろえる
       // 依頼より前に始まっていた古いスキャンの結果で「無い」と判定しない。
       // 依頼後に始まったスキャンでも見つからなければ諦める（除外対象など）
       if (revealedNow || renderScanSeq >= pendingSeq) pendingRevealPath = '';
@@ -1392,6 +1392,22 @@
     treeEl.scrollTop += el.getBoundingClientRect().top - treeEl.getBoundingClientRect().top - 4;
   }
 
+  // ファイルを出したうえで、そのファイルが入っているフォルダの行をツリーの上の端にそろえる
+  // （右クリックやパス欄の Enter で開いたとき。2026-10-14 本人指示。同じフォルダのほかのファイルも一緒に見えるように）。
+  // フォルダの中が長くて開いたファイルが下にはみ出すときだけ、ファイルが下の端に見えるところまで戻す
+  function revealInTreeFolderTop(winPath) {
+    if (!revealInTree(winPath)) return false;
+    var link = treeEl.querySelector('a.viewlink.active');
+    var box = link && link.closest('.tree-folder-content');
+    var row = box && box.previousElementSibling;
+    if (!row || !row.classList.contains('tree-folder-name')) return true;   // 作業フォルダの直下のファイルはそのまま
+    scrollTreeItemToTop(row);
+    var over = link.getBoundingClientRect().bottom - treeEl.getBoundingClientRect().bottom + 4;
+    if (over > 0) treeEl.scrollTop += over;
+    updateTreeGuide();
+    return true;
+  }
+
   // ツリー内に同じファイルがあれば、強調表示して祖先フォルダを展開する
   function revealInTree(winPath) {
     var norm = winPath.toLowerCase();
@@ -1460,7 +1476,7 @@
         urlInput.value = p;
         openFile(p);
         // 作った直後のファイルはツリーにまだ無いことがある。見つからなければ裏で再スキャンして出す
-        if (!revealInTree(p)) { pendingRevealPath = p; pendingSeq = scanSeq + 1; refreshTree(); }
+        if (!revealInTreeFolderTop(p)) { pendingRevealPath = p; pendingSeq = scanSeq + 1; refreshTree(); }
         msg.textContent = '';
       } else {
         r.text().then(function (t) {
