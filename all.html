@@ -283,8 +283,8 @@
     background: #ffe3a0; border-radius: 3px; box-shadow: 0 0 0 2px #f6b93b;
   }
   /* 行にマウスを乗せたときの吹き出し（2026-09-27 本人指示）。
-     ブラウザ標準の吹き出しは出るまで約1秒かかり、長いパスがそのまま出て読みにくいため自前で出す。
-     出すのは名前だけ。待ち時間なし */
+     ブラウザ標準の吹き出しは出るまで約1秒かかるため自前で出す。待ち時間なし。
+     出すのは絶対パス（2026-10-14 本人指示で名前から変更）。長いパスは折り返す */
   #hoverTip {
     position: fixed; z-index: 9998; display: none;
     max-width: 640px; padding: 5px 9px;
@@ -2689,14 +2689,19 @@
     hardReloadViewer();
   });
 
-  // 行の名前だけを、待ち時間なしで出す吹き出し（2026-09-27 本人指示。長いパスは出さない）
+  // 行の絶対パスを、待ち時間なしで出す吹き出し（2026-09-27 本人指示で作成。
+  // はじめは名前だけを出していたが、2026-10-14 本人指示で絶対パスに変えた。長いパスは吹き出しの中で折り返す）
   var tipEl = document.getElementById('hoverTip');
   var tipRow = null;
   function tipRowOf(t) {
     if (!t || !t.closest) return null;
     return t.closest('.tree-file, .tree-folder-name, .bm-item, .bm-dir-row');
   }
-  function tipNameOf(row) {
+  function tipTextOf(row) {
+    // 行の頭の c（パスのコピー）が絶対パスを持っている。無い行は行そのものの data-path、それも無ければ名前
+    var c = row.querySelector('.tree-c-copy');
+    var p = (c && c.dataset.path) || row.dataset.path || '';
+    if (p) return p.replace(/\//g, '\\');
     var el = row.querySelector('.tree-folder-label, .bm-dir-name, .bm-name, a');
     return el ? el.textContent.trim() : '';
   }
@@ -2706,7 +2711,7 @@
     if (row === tipRow) return;
     tipRow = row;
     if (!row || !tipEl) { if (tipEl) tipEl.style.display = 'none'; return; }
-    var text = tipNameOf(row);
+    var text = tipTextOf(row);
     if (!text) { tipEl.style.display = 'none'; return; }
     tipEl.textContent = text;
     tipEl.style.display = 'block';
