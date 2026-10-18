@@ -284,7 +284,7 @@
   }
   /* 行にマウスを乗せたときの吹き出し（2026-09-27 本人指示）。
      ブラウザ標準の吹き出しは出るまで約1秒かかるため自前で出す。待ち時間なし。
-     出すのは絶対パス（2026-10-14 本人指示で名前から変更）。長いパスは折り返す */
+     出すのは行までの階層を1階層1行にした階段（2026-10-18 本人指示。名前→絶対パス→階段と変更）。長い名前は折り返す */
   #hoverTip {
     position: fixed; z-index: 9998; display: none;
     max-width: 640px; padding: 5px 9px;
@@ -2689,8 +2689,9 @@
     hardReloadViewer();
   });
 
-  // 行の絶対パスを、待ち時間なしで出す吹き出し（2026-09-27 本人指示で作成。
-  // はじめは名前だけを出していたが、2026-10-14 本人指示で絶対パスに変えた。長いパスは吹き出しの中で折り返す）
+  // 行までの階層を、待ち時間なしで出す吹き出し（2026-09-27 本人指示で作成）。
+  // 名前だけ（9/27）→ 絶対パス（10/14）→ 1階層1行の階段（10/18 本人指示）と変えてきた。
+  // 階段の形は、ファイル名の下の場所の表示（renderDirSteps）と同じ。最後の行がその行のファイル名かフォルダ名
   var tipEl = document.getElementById('hoverTip');
   var tipRow = null;
   function tipRowOf(t) {
@@ -2705,6 +2706,20 @@
     var el = row.querySelector('.tree-folder-label, .bm-dir-name, .bm-name, a');
     return el ? el.textContent.trim() : '';
   }
+  // 吹き出しの中身を階段で組み立てる。作業フォルダの中は作業フォルダより下だけ、外はドライブから出す
+  function renderTipSteps(box, text) {
+    box.textContent = '';
+    if (text.indexOf('\\') < 0) { box.textContent = text; return; }   // パスでない（名前だけ）ときはそのまま
+    var root = (treeRootPath || '').replace(/[\\/]+$/, '');
+    var rel = (root && text.toLowerCase().indexOf(root.toLowerCase() + '\\') === 0) ? text.substring(root.length + 1) : text;
+    var parts = rel.split(/[\\\/]+/).filter(function (s) { return s; });
+    parts.forEach(function (name, i) {
+      var line = document.createElement('div');
+      line.style.paddingLeft = (Math.max(0, i - 1) * 1.3) + 'em';
+      line.textContent = (i === 0 ? '' : '└ ') + name;
+      box.appendChild(line);
+    });
+  }
   function hideTip() { tipRow = null; if (tipEl) tipEl.style.display = 'none'; }
   document.addEventListener('mouseover', function (e) {
     var row = tipRowOf(e.target);
@@ -2713,7 +2728,7 @@
     if (!row || !tipEl) { if (tipEl) tipEl.style.display = 'none'; return; }
     var text = tipTextOf(row);
     if (!text) { tipEl.style.display = 'none'; return; }
-    tipEl.textContent = text;
+    renderTipSteps(tipEl, text);
     tipEl.style.display = 'block';
     // 行のすぐ下に出す。画面からはみ出すときは内側へ寄せる
     var r = row.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
