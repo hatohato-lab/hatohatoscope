@@ -27,6 +27,9 @@ from flask import Flask, Response, request, send_from_directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
 
+# pythonw（窓なし）で動くとき、git や java を起動するたびに黒い窓が一瞬出るのを防ぐ。Windows 以外では 0 で何もしない
+NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+
 # ---------------------------------------------------------------- 設定の読み込み
 
 def load_config():
@@ -432,7 +435,7 @@ def rename_path():
 def run_git(args, cwd=None):
     try:
         out = subprocess.run(['git', '-c', 'core.quotepath=false'] + args, cwd=cwd,
-                             capture_output=True, timeout=60)
+                             capture_output=True, timeout=60, creationflags=NO_WINDOW)
         return (out.stdout + out.stderr).decode('utf-8', 'replace')
     except Exception as e:  # git不在等
         return 'fatal: ' + str(e)
@@ -780,7 +783,7 @@ def puml():
     try:
         proc = subprocess.run([java, '-Djava.awt.headless=true', '-jar', jar,
                                '-tsvg', '-charset', 'UTF-8', '-pipe'],
-                              input=src, capture_output=True, timeout=120)
+                              input=src, capture_output=True, timeout=120, creationflags=NO_WINDOW)
     except Exception as e:
         return Response('java start failed: %s' % e, status=500, mimetype='text/plain')
     svg = proc.stdout
