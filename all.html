@@ -1355,6 +1355,49 @@
     setTimeout(function () { btn.classList.remove('done'); }, 600);
   });
 
+  // ===== 開いているファイルが書き換わったら、本文を自動で読み直す（2026-10-24 本人指示。仕事１からの依頼） =====
+  // 3秒ごとに api/stat で更新時刻と大きさを確かめ、変わったときだけ「再表示」と同じ読み直しをする。
+  // タブが見えていない間・編集している間・差分を見ている間は、確かめも読み直しもしない。本文のスクロールの位置は保つ
+  var AUTO_RELOAD_MS = 3000;
+  var watchPath = '', watchSig = '';
+  function checkOpenFileChanged() {
+    if (document.hidden || !currentWin) return;
+    if (editor.style.display !== 'none') return;   // 保存していない変更を消さない
+    if (document.getElementById('fileTitleName').textContent.indexOf('差分: ') === 0) return;
+    var p = currentWin;
+    fetch('api/stat?p=' + encodeURIComponent(p) + '&t=' + Date.now())
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || p !== currentWin) return;   // 待っている間に別のファイルを開いたら何もしない
+        var sig = d.mtime + ':' + d.size;
+        if (watchPath !== p) { watchPath = p; watchSig = sig; return; }   // 開いた直後の1回目は基準にするだけ
+        if (sig === watchSig) return;
+        watchSig = sig;
+        reloadKeepingScroll(p);
+      })
+      .catch(function () {});
+  }
+  function reloadKeepingScroll(p) {
+    var y = 0;
+    try { y = iframe.contentWindow ? iframe.contentWindow.scrollY : 0; } catch (e) { y = 0; }
+    if (y > 0) {
+      var restore = function () {
+        iframe.removeEventListener('load', restore);
+        var put = function () { try { iframe.contentWindow.scrollTo(0, y); } catch (e) {} };
+        put();
+        setTimeout(put, 300);   // 図の描画などで、高さが後から変わる分も追いかける
+      };
+      iframe.addEventListener('load', restore);
+      setTimeout(function () { iframe.removeEventListener('load', restore); }, 5000);   // 枠を使わない表示のときに残さない
+    }
+    var st = treeEl ? treeEl.scrollTop : 0;
+    openFile(p);
+    if (treeEl) treeEl.scrollTop = st;
+    flashMsg('ファイルが書き換わったので読み直しました');
+  }
+  setInterval(checkOpenFileChanged, AUTO_RELOAD_MS);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) checkOpenFileChanged(); });
+
   document.getElementById('diffBtn').addEventListener('click', function () {
     var p = normPath(urlInput.value);
     var msg = document.getElementById('saveMsg');

@@ -287,6 +287,32 @@ def serve_file():
                     headers={'Content-Type': ct, 'Cache-Control': 'no-store',
                              'X-Content-Type-Options': 'nosniff'})
 
+
+@app.route('/api/stat')
+def stat_file():
+    """開いているファイルの更新時刻と大きさだけを返す（2026-10-24 追加）。
+
+    画面が数秒ごとに呼び、変わったときだけ本文を読み直すために使う。中身は返さない。
+    許可範囲の決まりは serve と同じ。
+    """
+    config = load_config()
+    if config is None:
+        return Response('config not found', status=500, mimetype='text/plain')
+    roots = allowed_roots(config)
+    p = request.args.get('p', '')
+    if not p:
+        return Response('no path', status=400, mimetype='text/plain')
+    if not under_allowed(norm(p), roots):
+        return Response('forbidden (outside allowed roots)', status=403, mimetype='text/plain')
+    real = os.path.realpath(p)
+    if not os.path.isfile(real):
+        return Response('not found', status=404, mimetype='text/plain')
+    if not any(norm(real).startswith(ar + '/') for ar in roots):
+        return Response('forbidden (resolved outside allowed roots)', status=403, mimetype='text/plain')
+    st = os.stat(real)
+    return Response(json.dumps({'mtime': st.st_mtime, 'size': st.st_size}),
+                    mimetype='application/json', headers={'Cache-Control': 'no-store'})
+
 # ---------------------------------------------------------------- 保存
 
 SAVE_EXTS = {'md', 'txt', 'json', 'py', 'php', 'js', 'css', 'html', 'htm', 'xml', 'csv',
