@@ -295,8 +295,9 @@
      ブックマーク欄の場所に、下のツリーと同じ形のツリーをもう1つ置く。行の見た目は下のツリーの指定をそのまま使う */
   .top-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
   .top-head { font-size: 13px; color: #333; font-weight: bold; margin-bottom: 4px;
-    display: flex; align-items: center; justify-content: space-between; }
-  .top-up { font-weight: normal; }
+    display: flex; flex-wrap: wrap; row-gap: 4px; align-items: center; justify-content: space-between; }
+  /* メニューの幅が狭いときは、見出しの字を途中で折らずに、ボタンの組を次の行の右に回す */
+  .top-up { font-weight: normal; margin-left: auto; }
   /* .menu-header button の指定より強くするため、.top-head を前に付ける */
   .top-head .top-up-btn { font-size: 12px; padding: 1px 8px; margin: 0 0 0 4px; cursor: pointer; }
   .top-head .top-up-btn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
@@ -353,7 +354,7 @@
       </div>
       <!-- 上のツリー（2026-10-31 本人指示。ブックマーク欄の場所に置いた、下と同じ形のツリー） -->
       <div class="top-box" id="topBox">
-        <div class="top-head">選んだ場所の階層<span class="top-up">上にそろえる:<button class="top-up-btn" data-up="1" title="押したものの1つ上のフォルダを、この欄の上の端にそろえる">1つ上</button><button class="top-up-btn" data-up="2" title="押したものの2つ上のフォルダを、この欄の上の端にそろえる">2つ上</button></span></div>
+        <div class="top-head">選んだ場所の階層<span class="top-up">上にそろえる:<button class="top-up-btn" data-up="1" title="押したものの1つ上のフォルダを、この欄の上の端にそろえる">1つ上</button><button class="top-up-btn" data-up="2" title="押したものの2つ上のフォルダを、この欄の上の端にそろえる">2つ上</button><button class="top-up-btn" data-up="all" title="作業フォルダの直下のフォルダを、この欄の上の端にそろえる（押したものまでの全部の階層が並ぶ）">一番上</button></span></div>
         <div id="topTree"><div class="loading">読込中...</div></div>
         <div class="top-resize" id="topResize" title="ドラッグで上のツリーの高さを変更"></div>
       </div>
@@ -2389,18 +2390,22 @@
   attachHeightGrip(bmListEl, document.getElementById('bmResize'), 'allViewerBmHeight', 210);
 
   // ===== 上のツリー（2026-10-31 本人指示。ブックマーク欄の場所に置いた、下と同じ形のツリー） =====
-  // 下のツリーで押したファイルやフォルダまでの道筋だけを開き、押したものの1つ上か2つ上のフォルダを上の端にそろえる。
+  // 下のツリーで押したファイルやフォルダまでの道筋だけを開き、押したものの1つ上か2つ上、または一番上（作業フォルダの直下）のフォルダを上の端にそろえる。
   // 道筋のほかのフォルダは閉じておき、階層だけが見えるようにする。本文のリンクや「戻る」で下のツリーが動いたときも合わせる。
   // 上のツリーで押したときは上は動かさず、本文と下のツリーをそのファイルに合わせる。
   // 全部の行を作ると下のツリー（数万行）と合わせて倍の重さになるので、開いているフォルダの中だけを作る
   var TOP_UP_KEY = 'allViewerTopUp';
-  var topUp = 2;               // 上の端にそろえるのは、押したものの何階層上か（1 か 2）
-  try { if (localStorage.getItem(TOP_UP_KEY) === '1') topUp = 1; } catch (e) {}
+  // 上の端にそろえるのは、押したものの何階層上か。記憶する値は '1'、'2'、'all'。
+  // 'all'（一番上）は数の上限を外すだけで、topHeads が作業フォルダの直下の行で止まる
+  function topUpOf(v) { return v === 'all' ? Infinity : (v === '1' ? 1 : 2); }
+  var topUp = 2;
+  try { topUp = topUpOf(localStorage.getItem(TOP_UP_KEY)); } catch (e) {}
   var topTarget = '';          // 上のツリーで選んでいる行のパス
   var topTargetDir = false;    // それがフォルダか
   var topOpenSelf = false;     // フォルダのとき、その中も開いて見せるか
   var topOpenSet = {};         // 上のツリーで開いているフォルダ（小文字のパス）
   var topNeedAlign = false;    // まだそろえていない（ツリーの読み込み前や、メニューを隠している間に頼まれた）
+  var topNeedStick = false;    // 欄が見えていない間に描き直したので、上の端に貼り付ける行をまだ測っていない
   var topHoverRow = null;
 
   function attrSel(p) { return String(p).replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
@@ -2464,19 +2469,36 @@
     return heads;
   }
   // そろえたフォルダから押したもののすぐ上までの行を、中身を下へ送っても上の端に貼り付けておく。
-  // 欄の高さが足りず、そろえたフォルダと押したものが一緒に収まらないときも、階層が見え続けるようにするため
+  // 欄の高さが足りず、そろえたフォルダと押したものが一緒に収まらないときも、階層が見え続けるようにするため。
+  // 貼り付けるのは欄の高さの半分まで。超えるときは、そろえたフォルダの行と、押したものに近い行から入るだけを貼り、
+  // 間の行は貼らずに流す（「一番上」で深い場所を押すと、貼り付けた行で欄が埋まり、押したものが隠れるため）。
+  // 貼り付けた行の高さの合計を返す
   function setTopSticky(on) {
     topTreeEl.querySelectorAll('.tree-folder-name.top-stick').forEach(function (x) {
       x.classList.remove('top-stick'); x.style.top = ''; x.style.zIndex = '';
     });
-    if (!on) return;
+    if (!on) return 0;
+    // 見えていない間は行の高さが0で、貼る位置がみな0になって重なる。見えたときに貼り直す
+    if (!topTreeEl.clientHeight) { topNeedStick = true; return 0; }
+    topNeedStick = false;
+    var heads = topHeads(), max = topTreeEl.clientHeight / 2, sum = 0;
+    heads.forEach(function (h) { sum += h.offsetHeight; });
+    if (sum > max && heads.length > 1) {
+      var near = [], used = heads[0].offsetHeight;
+      for (var i = heads.length - 1; i > 0 && used + heads[i].offsetHeight <= max; i--) {
+        used += heads[i].offsetHeight;
+        near.unshift(heads[i]);
+      }
+      heads = [heads[0]].concat(near);
+    }
     var y = 0;
-    topHeads().forEach(function (h, k) {
+    heads.forEach(function (h, k) {
       h.classList.add('top-stick');
       h.style.top = y + 'px';
-      h.style.zIndex = String(20 - k);   // 押し出されるときに、上の階層の行が下の階層の行の上に来るように
+      h.style.zIndex = String(Math.max(20 - k, 1));   // 押し出されるときに、上の階層の行が下の階層の行の上に来るように
       y += h.offsetHeight;
     });
+    return y;
   }
   // 押したものの topUp 階層上のフォルダを、上の端にそろえる。押したものが下の端からはみ出すときは、見えるところまで送る
   // （送った分は、そろえたフォルダの行が上の端に貼り付いて残る）。開いたフォルダは中身も少し見えるよう、欄の上から3分の2までに収める
@@ -2487,12 +2509,16 @@
     var heads = topHeads();
     var head = heads.length ? heads[0] : row;   // 作業フォルダの直下のものは、それ自身を上の端に置く
     topTreeEl.scrollTop += head.getBoundingClientRect().top - topTreeEl.getBoundingClientRect().top;
+    var base = topTreeEl.scrollTop;
     var box = topTreeEl.getBoundingClientRect();
     var limit = (row.classList.contains('tree-folder-name') && row.dataset.open === 'true')
       ? box.top + box.height * 2 / 3 : box.bottom - 4;
     var over = row.getBoundingClientRect().bottom - limit;
     if (over > 0) topTreeEl.scrollTop += over;
-    setTopSticky(true);
+    // 欄が低くて、押したものが貼り付けた行の下に隠れるときは、隠れないところまで戻す（そろえたフォルダより上へは戻さない）
+    var stuck = setTopSticky(true);
+    var hid = box.top + stuck - row.getBoundingClientRect().top;
+    if (hid > 0) topTreeEl.scrollTop = Math.max(base, topTreeEl.scrollTop - hid);
   }
   // 道筋のフォルダだけを開き直して描き、上の端にそろえる。
   // 欄が見えていない（メニューを隠している、最大化している）ときは位置が測れないので、見えたときにそろえる
@@ -2525,9 +2551,12 @@
     topTreeEl.scrollTop = st;
     setTopSticky(true);   // 描き直すと行が作り直されるので、貼り付けもやり直す
   }
-  // メニューや最大化から戻って欄が見えたとき、まだそろえていなければそろえる
+  // メニューや最大化から戻って欄が見えたとき、まだそろえていなければそろえる。
+  // そろえ済みで、隠れている間にツリーを読み直しただけなら、開き方と位置はそのままで貼り付けだけをやり直す
   function alignTopTreeIfNeeded() {
-    if (topNeedAlign && treeData && topTreeEl && topTreeEl.clientHeight) showTopTree();
+    if (!treeData || !topTreeEl || !topTreeEl.clientHeight) return;
+    if (topNeedAlign) showTopTree();
+    else if (topNeedStick) setTopSticky(true);
   }
   // 上のツリーのフォルダの開閉。閉じていたフォルダは、初めて開いたときに中を作る
   function toggleTopFolder(f) {
@@ -2569,15 +2598,15 @@
     });
     topTreeEl.addEventListener('mouseleave', function () { topHoverRow = null; updateTopGuide(); });
   }
-  // 「1つ上」「2つ上」の切り替え。押したら、いま選んでいる行で道筋を開き直してそろえる
+  // 「1つ上」「2つ上」「一番上」の切り替え。押したら、いま選んでいる行で道筋を開き直してそろえる
   var topUpBtns = Array.prototype.slice.call(document.querySelectorAll('.top-up-btn'));
   function updateTopUpBtns() {
-    topUpBtns.forEach(function (b) { b.classList.toggle('active', parseInt(b.dataset.up, 10) === topUp); });
+    topUpBtns.forEach(function (b) { b.classList.toggle('active', topUpOf(b.dataset.up) === topUp); });
   }
   topUpBtns.forEach(function (b) {
     b.addEventListener('click', function () {
-      topUp = (parseInt(this.dataset.up, 10) === 1) ? 1 : 2;
-      try { localStorage.setItem(TOP_UP_KEY, String(topUp)); } catch (e) {}
+      topUp = topUpOf(this.dataset.up);
+      try { localStorage.setItem(TOP_UP_KEY, this.dataset.up); } catch (e) {}
       updateTopUpBtns();
       if (topTarget && treeData) showTopTree();
     });
