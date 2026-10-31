@@ -115,8 +115,12 @@
   /* 場所の階段のいちばん下の段にファイル名を入れる（2026-10-31 本人指示。前は1段目にファイル名だけの行があった） */
   /* 帯は本文で使わない薄いベージュにし、本文との境目に濃いめの線を引く（2026-10-31 本人指示。
      白い地が続いて、ボタンの列・帯・本文が混ざって見えたため。本文の見出しは水色なので、水色だと本文の一部に見える） */
-  .file-title { display: block; padding: 5px 10px;
+  .file-title { display: flex; align-items: flex-start; gap: 10px; padding: 5px 10px;
     background: #f3eee4; border-bottom: 2px solid #c2b08c; overflow: hidden; }
+  /* 目次と最大化のボタンは帯の右上に置く（2026-10-31 本人指示。前はファイル名の下の行にあった）。
+     左の場所とファイル名は min-width:0 で縮め、ボタンの手前で「…」と切る */
+  .file-title-main { flex: 1 1 auto; min-width: 0; }
+  .file-title-btns { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
   /* ファイル名は、見てすぐ気づくように 22px の太字にした（2026-10-31 本人指示。前は 17px） */
   #fileTitleName { display: block; font-size: 22px; font-weight: bold; color: #1a1a1a;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -145,7 +149,7 @@
   #outlineBtn.on { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   /* 最大化（2026-10-07 本人指示）。表示中のファイルだけを画面いっぱいに出す。
      左のメニュー・パス欄・ファイル名の帯・目次を隠し、右上の「元に戻す」か Esc で戻す */
-  #maxBtn { font-size: 12px; padding: 3px 8px; cursor: pointer; margin-left: 4px; }
+  #maxBtn { font-size: 12px; padding: 3px 8px; cursor: pointer; }
   #restoreBtn { display: none; position: fixed; top: 8px; right: 14px; z-index: 10000;
     font-size: 14px; padding: 4px 12px; cursor: pointer; background: #fff; color: #000;
     border: 1px solid #999; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
@@ -352,9 +356,11 @@
       <span id="saveMsg" style="margin-left:8px;font-size:13px;color:#178a3a;"></span>
     </div>
     <div class="file-title" id="fileTitle" style="display:none;">
-      <span id="fileTitleDir"></span><span id="fileTitleName"></span>
-      <button id="outlineBtn" title="目次の表示 / 非表示">目次</button>
-      <button id="maxBtn" title="表示中のファイルを画面いっぱいに広げる（右上の「元に戻す」か Esc で戻る）">最大化</button>
+      <div class="file-title-main"><span id="fileTitleDir"></span><span id="fileTitleName"></span></div>
+      <div class="file-title-btns">
+        <button id="outlineBtn" title="目次の表示 / 非表示">目次</button>
+        <button id="maxBtn" title="表示中のファイルを画面いっぱいに広げる（右上の「元に戻す」か Esc で戻る）">最大化</button>
+      </div>
     </div>
     <div class="viewer-area">
       <div class="placeholder" id="placeholder">メニューからファイルを選ぶと、ここに表示されます。</div>
@@ -766,7 +772,7 @@
     var stepPx = parseFloat(getComputedStyle(dirEl).fontSize) || 17;
     nameEl.classList.toggle('in-steps', depth > 0);
     nameEl.style.paddingLeft = (Math.max(0, depth - 1) * 1.3 * stepPx) + 'px';
-    box.style.display = 'block';   // 縦に積むので block（flexだと横並びに戻る）
+    box.style.display = 'flex';   // 左に場所とファイル名、右上にボタンを並べる（2026-10-31 変更）
   }
 
   function openFile(winPath) {
