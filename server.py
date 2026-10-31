@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """hatohatoscope のサーバー（Python + Flask）。
 
-画面（all.html）が呼ぶ窓口（ツリー・配信・保存・git・全文検索・図・ブックマーク）をすべて提供する。
+画面（all.html）が呼ぶ窓口（ツリー・配信・保存・git・全文検索・図・ブックマーク・閲覧範囲）をすべて提供する。
 
 使い方:
     1) api/config.example.json を api/config.json にコピーして root を書き換える
@@ -20,7 +20,10 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+from functools import wraps
+from urllib.parse import urlsplit
 
 from flask import Flask, Response, request, send_from_directory
 
@@ -40,11 +43,13 @@ def load_config():
         return json.load(f)
 
 
+ROOTS_FILE = os.path.join(BASE_DIR, 'api', 'roots.json')
+
+
 def load_roots():
-    path = os.path.join(BASE_DIR, 'api', 'roots.json')
-    if not os.path.isfile(path):
+    if not os.path.isfile(ROOTS_FILE):
         return []
-    with open(path, encoding='utf-8') as f:
+    with open(ROOTS_FILE, encoding='utf-8') as f:
         data = json.load(f)
     return data if isinstance(data, list) else []
 
@@ -69,6 +74,34 @@ def under_allowed(path_n, roots):
 
 
 UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
+
+# ---------------------------------------------------------------- 書き換えの窓口の守り
+
+# 書き換えの窓口は、ビューアの画面からの依頼だけを受ける（2026-10-31 追加）。
+# 認証が無いため、ほかのサイトのページが <form> で送った保存や名前の変更も、これまでそのまま通っていた。
+# 画面は書き換えの依頼に X-Hatohatoscope の見出しを付ける。ほかのサイトのページは、ブラウザの決まりで
+# この見出しを付けて送れない（付けると先に問い合わせが来て、このサーバーは許可を返さない）。
+# 名前の付け替え（DNS rebinding）でこのサーバーに見せかける手口は、Host と Origin が localhost でないことで断る。
+LOCAL_NAMES = ('localhost', '127.0.0.1', '::1')
+
+
+def from_viewer():
+    if request.headers.get('X-Hatohatoscope') != '1':
+        return False
+    if urlsplit('//' + (request.host or '')).hostname not in LOCAL_NAMES:
+        return False
+    origin = request.headers.get('Origin')
+    return origin is None or urlsplit(origin).hostname in LOCAL_NAMES
+
+
+def viewer_only(fn):
+    """書き換えの窓口に付ける。調べるのは POST だけ（ブックマークの GET は読むだけなので通す）。"""
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        if request.method == 'POST' and not from_viewer():
+            return Response('NG: ビューアの画面からの依頼ではないため断りました', status=403, mimetype='text/plain')
+        return fn(*args, **kwargs)
+    return wrapped
 
 # ---------------------------------------------------------------- URL の頭の名前（/mydocs/ 等）
 
@@ -222,13 +255,16 @@ def file_tree():
     for er in load_roots():
         if 'path' not in er or not os.path.isdir(er['path']):
             continue
-        tree['children'].append({
+        node = {
             'name': er.get('name', os.path.basename(er['path'])),
             'path': er['path'].replace('/', '\\'),
             'children': scan_directory(er['path'].rstrip('/'), er.get('exclude', []),
                                        int(er.get('maxDepth', 4)), 0,
                                        er.get('excludeFiles', []), dcache, seen, dirty),
-        })
+        }
+        if er.get('addedBy') == 'viewer':
+            node['added'] = True   # パス欄から足したもの。画面は右クリックに「閲覧範囲から外す」を出す
+        tree['children'].append(node)
     # 台帳の保存（今回見に行かなかったフォルダ＝消えた分は落とす）
     if dirty[0] or len(dcache) != len(seen):
         try:
@@ -320,6 +356,7 @@ SAVE_EXTS = {'md', 'txt', 'json', 'py', 'php', 'js', 'css', 'html', 'htm', 'xml'
 
 
 @app.route('/save', methods=['POST'])
+@viewer_only
 def save_file():
     config = load_config()
     if config is None:
@@ -350,6 +387,7 @@ BAD_NAME_CHARS = set('\\/:*?"<>|')
 
 
 @app.route('/mkdir', methods=['POST'])
+@viewer_only
 def make_dir():
     """右クリックメニューの「ここにフォルダを作る」の窓口（2026-09-20 追加）。
 
@@ -384,6 +422,7 @@ def make_dir():
     return Response('OK: フォルダを作りました: ' + name, mimetype='text/plain')
 
 @app.route('/newfile', methods=['POST'])
+@viewer_only
 def make_file():
     """右クリックメニューの「ここにファイルを作る」の窓口（2026-09-27 追加）。
 
@@ -420,6 +459,7 @@ def make_file():
 
 
 @app.route('/rename', methods=['POST'])
+@viewer_only
 def rename_path():
     """右クリックメニューの「名前を変える」の窓口（2026-09-27 追加）。
 
@@ -829,6 +869,7 @@ BM_MAX_ITEMS = 2000
 
 
 @app.route('/api/bookmarks', methods=['GET', 'POST'])
+@viewer_only
 def bookmarks():
     """ブックマークの読み書き（2026-10-04 追加）。置き場は api/bookmarks.json（git 管理外）。
 
@@ -869,6 +910,146 @@ def bookmarks():
     except OSError:
         return Response('NG: write failed', status=500, mimetype='text/plain')
     return Response('OK: %d bookmarks saved' % len(clean), mimetype='text/plain')
+
+# ---------------------------------------------------------------- 閲覧範囲の追加と外す（パス欄・右クリックから）
+
+# パス欄から足すフォルダで、ツリーに出さないもの。キャッシュは数が多く、開いても読めない
+# （2026-10-31。Playwright のブラウザの箱は 17,512 ファイルあり、大半がキャッシュだった）
+ADD_ROOT_EXCLUDE = ['.git', 'node_modules', '__pycache__', '.venv', 'venv',
+                    'Cache', 'Code Cache', 'GPUCache', 'Service Worker', 'GrShaderCache', 'ShaderCache',
+                    'GPUPersistentCache', 'DawnCache', 'DawnWebGPUCache', 'DawnGraphiteCache', 'Shared Dictionary']
+ADD_ROOT_DEPTH = 4
+ADD_ROOT_MAX_ROWS = 5000   # これを超えるフォルダは足さない（下のツリーは全部の行を作るので、重くなる）
+ROOTS_LOCK = threading.Lock()   # 2つの依頼が同時に読んで書くと、片方の追加が消えるため
+
+
+def count_rows(path, exclude, max_depth, limit, depth=0):
+    """ツリーに出る行の数を、scan_directory と同じ決まりで数える。limit を超えたら、そこで数えるのをやめる。"""
+    if max_depth > 0 and depth >= max_depth:
+        return 0
+    try:
+        entries = list(os.scandir(path))
+    except OSError:
+        return 0
+    n = 0
+    for e in entries:
+        if e.name in exclude:
+            continue
+        try:
+            is_dir = e.is_dir(follow_symlinks=True)
+        except OSError:
+            continue
+        if is_dir:
+            if UUID_RE.match(e.name):
+                continue
+            n += 1
+            child_max = depth + 6 if (max_depth > 0 and e.name in ('projects', 'memory')) else max_depth
+            n += count_rows(e.path, exclude, child_max, limit - n, depth + 1)
+        elif not e.name.endswith('.jsonl'):
+            n += 1
+        if n > limit:
+            break
+    return n
+
+
+def save_roots(items):
+    """api/roots.json を書き直す。手でも読めるよう、1つの設定を1行ずつにし、並びは1行にまとめる。
+    書きかけで落ちても元のファイルが壊れないよう、別名に書いてから差し替える（ブックマークと同じ）。"""
+    lines = ['[']
+    for i, er in enumerate(items):
+        keys = list(er.keys())
+        lines.append('  {')
+        for j, k in enumerate(keys):
+            lines.append('    %s: %s%s' % (json.dumps(k, ensure_ascii=False), json.dumps(er[k], ensure_ascii=False),
+                                         ',' if j < len(keys) - 1 else ''))
+        lines.append('  }' + (',' if i < len(items) - 1 else ''))
+    lines.append(']')
+    tmp = ROOTS_FILE + '.tmp'
+    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('\n'.join(lines) + '\n')
+    os.replace(tmp, ROOTS_FILE)
+
+
+@app.route('/api/add_root', methods=['POST'])
+@viewer_only
+def add_root():
+    """パス欄の「閲覧範囲に追加」の窓口（2026-10-31 追加）。api/roots.json に1つ足す。
+
+    安全の決まり:
+    読み取り専用で見られるようにするだけ（保存できるのは作業フォルダの中のまま）・ドライブの直下は断る・
+    すでに閲覧範囲の中にあるもの、閲覧範囲を中に含むものは断る・ツリーに出る行が 5,000 を超えるものは断る。
+    ファイルのパスなら、そのファイルが入っているフォルダを足す。
+    """
+    config = load_config()
+    if config is None:
+        return Response('NG: config not found', status=500, mimetype='text/plain')
+    p = request.form.get('p', '').strip().strip('"')
+    if not p or not os.path.isabs(p):
+        return Response('NG: 絶対パスを入れてください', status=400, mimetype='text/plain')
+    if not os.path.exists(p):
+        return Response('NG: そのファイル・フォルダがありません', status=404, mimetype='text/plain')
+    is_file = os.path.isfile(p)
+    folder = os.path.realpath(os.path.dirname(p) if is_file else p)
+    if os.path.dirname(folder) == folder:
+        return Response('NG: ドライブの直下は追加しません', status=400, mimetype='text/plain')
+    folder_n = norm(folder)
+    with ROOTS_LOCK:
+        try:
+            items = load_roots()
+            roots = allowed_roots(config)
+        except (OSError, ValueError):
+            return Response('NG: api/roots.json が壊れています', status=500, mimetype='text/plain')
+        if under_allowed(folder_n, roots):
+            return Response('NG: すでに閲覧範囲の中です（ツリーに無いときは、除外の決まりで出していません）',
+                            status=409, mimetype='text/plain')
+        # フォルダが一時的に無くて閲覧範囲から抜けている設定も、同じものを二重に足さない
+        if any(isinstance(er, dict) and norm(str(er.get('path', ''))) == folder_n for er in items):
+            return Response('NG: すでに api/roots.json に書いてあります', status=409, mimetype='text/plain')
+        if any(ar.startswith(folder_n + '/') for ar in roots):
+            return Response('NG: 閲覧範囲のフォルダを中に含むため追加しません', status=409, mimetype='text/plain')
+        if count_rows(folder, ADD_ROOT_EXCLUDE, ADD_ROOT_DEPTH, ADD_ROOT_MAX_ROWS) > ADD_ROOT_MAX_ROWS:
+            return Response('NG: ツリーに出る行が %s を超えるため追加しません（もっと下のフォルダを指定してください）'
+                            % format(ADD_ROOT_MAX_ROWS, ','), status=400, mimetype='text/plain')
+        # 名前は「フォルダ名（1つ上のフォルダ名）」。手で書いた設定（.claude（Claude設定）など）と同じ形にそろえる
+        parent = os.path.basename(os.path.dirname(folder))
+        name = os.path.basename(folder) + ('（%s）' % parent if parent else '')
+        items.append({'name': name, 'path': folder.replace('\\', '/'), 'maxDepth': ADD_ROOT_DEPTH,
+                      'exclude': ADD_ROOT_EXCLUDE, 'excludeFiles': [], 'addedBy': 'viewer'})
+        try:
+            save_roots(items)
+        except OSError:
+            return Response('NG: api/roots.json に書けませんでした', status=500, mimetype='text/plain')
+    return Response(json.dumps({'path': folder, 'name': name, 'file': is_file}, ensure_ascii=False),
+                    mimetype='application/json')
+
+
+@app.route('/api/remove_root', methods=['POST'])
+@viewer_only
+def remove_root():
+    """ツリーの右クリックの「閲覧範囲から外す」の窓口（2026-10-31 追加）。
+
+    外せるのは、パス欄から足したもの（addedBy が viewer）だけ。手で書いた設定（.claude など）は、
+    除外するフォルダを手で選んであり、外すと元に戻せないため、ここでは外さない。フォルダの中身には触らない。
+    """
+    p = request.form.get('p', '').strip()
+    if not p:
+        return Response('NG: no path', status=400, mimetype='text/plain')
+    key = norm(p)
+    with ROOTS_LOCK:
+        try:
+            items = load_roots()
+        except (OSError, ValueError):
+            return Response('NG: api/roots.json が壊れています', status=500, mimetype='text/plain')
+        hit = [er for er in items if isinstance(er, dict) and norm(str(er.get('path', ''))) == key]
+        if not hit:
+            return Response('NG: 閲覧範囲に追加したフォルダではありません', status=404, mimetype='text/plain')
+        if any(er.get('addedBy') != 'viewer' for er in hit):
+            return Response('NG: 手で書いた設定のため、ここでは外せません', status=403, mimetype='text/plain')
+        try:
+            save_roots([er for er in items if er not in hit])
+        except OSError:
+            return Response('NG: api/roots.json に書けませんでした', status=500, mimetype='text/plain')
+    return Response('OK: 閲覧範囲から外しました: ' + str(hit[0].get('name', '')), mimetype='text/plain')
 
 
 # ---------------------------------------------------------------- 起動

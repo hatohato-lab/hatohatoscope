@@ -406,6 +406,9 @@
   // この all.html は http://localhost/mydocs/all.html で開く想定。
   // 表示対象のルートはサーバー側（api/config.json）で決まる。フロントはパスを持たない。
   var API = 'api/file_tree?root=1';
+  // 書き換えの依頼（保存・作成・名前の変更・ブックマーク・閲覧範囲）に付ける見出し。
+  // サーバーはこれが無い依頼を断る（ほかのサイトのページから書き換えさせないため。2026-10-31）
+  var VIEWER_HDR = { 'X-Hatohatoscope': '1' };
 
   // 画像（枠の幅に収めて表示する。2026-09-19 追加：.jpeg 等が灰色で開けなかったため）
   var IMG_EXT = ['.png','.jpg','.jpeg','.gif','.webp','.bmp','.ico'];
@@ -659,7 +662,7 @@
     var body = new URLSearchParams();
     body.append('p', parent);
     body.append('name', name);
-    fetch('mkdir', { method: 'POST', body: body })
+    fetch('mkdir', { method: 'POST', headers: VIEWER_HDR, body: body })
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
       .then(function (res) {
         if (!res.ok) { flashMsg(res.t, '#c00'); return; }
@@ -680,7 +683,7 @@
     var body = new URLSearchParams();
     body.append('p', parent);
     body.append('name', name);
-    fetch('newfile', { method: 'POST', body: body })
+    fetch('newfile', { method: 'POST', headers: VIEWER_HDR, body: body })
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
       .then(function (res) {
         if (!res.ok) { flashMsg(res.t, '#c00'); return; }
@@ -713,7 +716,7 @@
     var body = new URLSearchParams();
     body.append('p', target);
     body.append('name', name);
-    fetch('rename', { method: 'POST', body: body })
+    fetch('rename', { method: 'POST', headers: VIEWER_HDR, body: body })
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
       .then(function (res) {
         if (!res.ok) { flashMsg(res.t, '#c00'); return; }
@@ -728,6 +731,25 @@
       })
       .catch(function () { flashMsg('名前を変えられませんでした', '#c00'); });
   }
+  // 「閲覧範囲から外す」。パス欄から足したフォルダの行だけに出す。フォルダの中身には触らない（2026-10-31 追加）
+  function removeRoot(p) {
+    var body = new URLSearchParams();
+    body.append('p', p);
+    fetch('api/remove_root', { method: 'POST', headers: VIEWER_HDR, body: body })
+      .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+      .then(function (res) {
+        if (!res.ok) { flashMsg(res.t, '#c00'); return; }
+        flashMsg(res.t);
+        refreshTree();
+      })
+      .catch(function () { flashMsg('閲覧範囲から外せませんでした', '#c00'); });
+  }
+  // 作業フォルダの中か。外（.claude や、パス欄から足したフォルダ）は読み取り専用なので、作成と名前の変更を出さない
+  function inWorkspace(p) {
+    var root = (treeRootPath || '').replace(/[\\\/]+$/, '').toLowerCase();
+    var lp = String(p).toLowerCase();
+    return !!root && (lp === root || lp.indexOf(root + String.fromCharCode(92)) === 0);
+  }
   // 下のツリーと上のツリーで同じメニューを出す
   function onTreeContextMenu(e) {
     var row = e.target.closest('.tree-file, .tree-folder-name');
@@ -735,7 +757,6 @@
     var c = row.querySelector('.tree-c-copy');
     var p = c ? c.dataset.path : (row.dataset.path || '');
     if (!p) return;
-    e.preventDefault();   // 行の上ではブラウザの右クリックメニューを出さない
     var isFolder = row.classList.contains('tree-folder-name');
     var items = [];
     if (BM_ENABLED) items.push({
@@ -746,11 +767,18 @@
         flashMsg((wasOn ? '★ ブックマークから外しました: ' : '★ ブックマークに登録しました: ') + baseName(p));
       }
     });
-    if (isFolder) {
-      items.push({ label: '📁 ここにフォルダを作る', run: function () { makeFolder(p); } });
-      items.push({ label: '📄 ここにファイルを作る', run: function () { makeFile(p); } });
+    if (inWorkspace(p)) {
+      if (isFolder) {
+        items.push({ label: '📁 ここにフォルダを作る', run: function () { makeFolder(p); } });
+        items.push({ label: '📄 ここにファイルを作る', run: function () { makeFile(p); } });
+      }
+      items.push({ label: '✏ 名前を変える：' + baseName(p), run: function () { renamePath(p, isFolder); } });
     }
-    items.push({ label: '✏ 名前を変える：' + baseName(p), run: function () { renamePath(p, isFolder); } });
+    if (isFolder && addedRoots[p.toLowerCase()]) {
+      items.push({ label: '↩ 閲覧範囲から外す：' + baseName(p), run: function () { removeRoot(p); } });
+    }
+    if (!items.length) return;   // 出すものが無い行は、ブラウザの右クリックメニューのままにする
+    e.preventDefault();   // 行の上ではブラウザの右クリックメニューを出さない
     showCtxMenu(row.ownerDocument, e.clientX, e.clientY, items);
   }
   treeEl.addEventListener('contextmenu', onTreeContextMenu);
@@ -842,6 +870,7 @@
     updateBmBtn();
     addHistory(winPath);
     currentWin = winPath;
+    watchGone = '';   // 開き直したので、閲覧範囲から外していたファイルでも、自動の読み直しの確かめを再開する
     var url = toUrl(winPath);
     var ext = extOf(winPath);
     placeholder.style.display = 'none';
@@ -1272,6 +1301,8 @@
   // 閉じていたフォルダを開いたときに中身を作るのに使う
   var treeData = null;
   var nodeMap = {};
+  // パス欄から閲覧範囲に足したフォルダ（パスの小文字）。右クリックに「閲覧範囲から外す」を出すのに使う（2026-10-31 追加）
+  var addedRoots = {};
   function buildIndex(items) {
     items.forEach(function (it) {
       if (it.children) {
@@ -1295,6 +1326,8 @@
     flatIndex = [];
     nodeMap = {};
     buildIndex(data.children || []);
+    addedRoots = {};
+    (data.children || []).forEach(function (it) { if (it.added) addedRoots[it.path.toLowerCase()] = true; });
     treeData = data;
     treeEl.innerHTML = render(data.children || [], 0);
     // 絞り込み中なら、描き直したツリーにも同じ絞り込みをかけ直す
@@ -1491,13 +1524,20 @@
   // タブが見えていない間・編集している間・差分を見ている間は、確かめも読み直しもしない。本文のスクロールの位置は保つ
   var AUTO_RELOAD_MS = 3000;
   var watchPath = '', watchSig = '';
+  // 閲覧範囲から外したファイル。開き直すまで確かめない（2026-10-31。3秒ごとに断られ続けていた）。
+  // 見つからない（404）ときは続ける。書き換えの途中で一瞬だけ無くなるファイルで、読み直しが止まらないように
+  var watchGone = '';
   function checkOpenFileChanged() {
     if (document.hidden || !currentWin) return;
     if (editor.style.display !== 'none') return;   // 保存していない変更を消さない
     if (document.getElementById('fileTitleName').textContent.indexOf('差分: ') === 0) return;
     var p = currentWin;
+    if (p === watchGone) return;
     fetch('api/stat?p=' + encodeURIComponent(p) + '&t=' + Date.now())
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) {
+        if (r.status === 403) { watchGone = p; return null; }
+        return r.ok ? r.json() : null;
+      })
       .then(function (d) {
         if (!d || p !== currentWin) return;   // 待っている間に別のファイルを開いたら何もしない
         var sig = d.mtime + ':' + d.size;
@@ -1638,6 +1678,39 @@
     }
     return false;
   }
+  // 閲覧範囲の外のパスを開こうとしたら、上のメッセージ欄に「閲覧範囲に追加」のボタンを出す（2026-10-31 本人指示）。
+  // 押すと、そのフォルダ（ファイルなら入っているフォルダ）を読み取り専用でツリーの一番下に足し、そのまま開く
+  function offerAddRoot(p) {
+    var msg = document.getElementById('saveMsg');
+    msg.style.color = '#c00';
+    msg.textContent = '閲覧範囲の外です ';
+    var b = document.createElement('button');
+    b.textContent = '閲覧範囲に追加';
+    b.title = '読み取り専用で、ツリーの一番下に加えます（ファイルのときは、入っているフォルダを加えます）';
+    b.addEventListener('click', function () { addRoot(p); });
+    msg.appendChild(b);
+  }
+  function addRoot(p) {
+    var msg = document.getElementById('saveMsg');
+    msg.style.color = '#888'; msg.textContent = '閲覧範囲に追加中...';
+    var body = new URLSearchParams();
+    body.append('p', p);
+    fetch('api/add_root', { method: 'POST', headers: VIEWER_HDR, body: body })
+      .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+      .then(function (res) {
+        if (!res.ok) { msg.style.color = '#c00'; msg.textContent = res.t; return; }
+        var info = JSON.parse(res.t);   // { path: 足したフォルダ, name: ツリーに出る名前, file: パスがファイルだったか }
+        function show() { return info.file ? revealInTreeFolderTop(p) : revealFolderInTree(info.path); }
+        refreshTree(function () {
+          if (info.file) openFile(p);
+          // 先に走っていた読み直し（足す前の中身）の後に呼ばれたときは、もう一度読み直してから出す
+          if (!show()) refreshTree(show);
+          addHistory(p);
+          flashMsg('閲覧範囲に追加しました: ' + info.name);
+        });
+      })
+      .catch(function () { flashMsg('閲覧範囲に追加できませんでした', '#c00'); });
+  }
   function openFromInput() {
     var p = normPath(urlInput.value);
     if (!p) return;
@@ -1666,6 +1739,7 @@
             });
             return;
           }
+          if (t.indexOf('forbidden (outside allowed roots)') >= 0) { offerAddRoot(p); return; }
           var jp = 'パスを確認してください';
           if (t.indexOf('not found') >= 0) jp = 'ファイルが見つかりません';
           else if (t.indexOf('forbidden') >= 0) jp = '許可フォルダの外は開けません';
@@ -1973,7 +2047,7 @@
   function saveBmFile(a) {
     var body = new URLSearchParams();
     body.append('body', JSON.stringify(a));
-    fetch('api/bookmarks', { method: 'POST', body: body })
+    fetch('api/bookmarks', { method: 'POST', headers: VIEWER_HDR, body: body })
       .then(function (r) {
         if (!r.ok) return r.text().then(function (t) { flashMsg('ブックマークをファイルに保存できませんでした: ' + t, '#c00'); });
       })
@@ -2416,6 +2490,16 @@
     if (!root) return out;
     var d = dirName(p);
     while (d && d.toLowerCase().indexOf(root + '\\') === 0) { out.unshift(d); d = dirName(d); }
+    if (out.length || !treeData) return out;
+    // 作業フォルダの外（.claude や、パス欄から足したフォルダ）は、ツリーの一番上の段にあるそのフォルダから返す
+    // （2026-10-31。作業フォルダの中だけを見ていたので、外のファイルを押しても上のツリーが付いてこなかった）
+    var lp = String(p).toLowerCase();
+    var top = (treeData.children || []).filter(function (it) {
+      return it.children && lp.indexOf(String(it.path).toLowerCase() + '\\') === 0;
+    })[0];
+    if (!top) return out;
+    var k = top.path.toLowerCase();
+    while (d && (d.toLowerCase() === k || d.toLowerCase().indexOf(k + '\\') === 0)) { out.unshift(d); d = dirName(d); }
     return out;
   }
   // 上のツリーの中で、そのパスの行（フォルダは帯、ファイルはリンク）を探す。大文字と小文字は区別しない
@@ -2857,7 +2941,7 @@
     var body = new URLSearchParams();
     body.append('p', currentWin);
     body.append('body', editor.value);
-    fetch('save', { method: 'POST', body: body })
+    fetch('save', { method: 'POST', headers: VIEWER_HDR, body: body })
       .then(function (r) { return r.text().then(function(t){ return {ok:r.ok, t:t}; }); })
       .then(function (res) {
         if (res.ok) { msg.style.color = '#178a3a'; msg.textContent = '保存しました (' + res.t + ')'; }
