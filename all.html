@@ -761,18 +761,24 @@
   });
 
   // ビューア上部に、場所の階段と、そのいちばん下の段のファイル名を出す（場所は作業フォルダ以降）
+  var titlePath = '';   // 帯に出しているファイルのパス。ツリーを読み込み終えたときに階段を描き直すために覚える
   function showFileTitle(winPath, prefix) {
     var box = document.getElementById('fileTitle');
     if (!box) return;
+    titlePath = winPath;
+    document.getElementById('fileTitleName').textContent = (prefix || '') + baseName(winPath);
+    layoutFileTitle(winPath);
+    box.style.display = 'flex';   // 左に場所とファイル名、右上にボタンを並べる（2026-10-31 変更）
+  }
+  // 場所の階段を描き、ファイル名の段の字下げをそろえる。ファイル名の文字（差分の頭書きを含む）は変えない
+  function layoutFileTitle(winPath) {
     var nameEl = document.getElementById('fileTitleName');
     var dirEl = document.getElementById('fileTitleDir');
-    nameEl.textContent = (prefix || '') + baseName(winPath);
     var depth = renderDirSteps(dirEl, winPath);
     // ファイル名の段の字下げは、フォルダの段と同じ「1段 1.3 文字」。フォルダの段の字の大きさで測ってそろえる
     var stepPx = parseFloat(getComputedStyle(dirEl).fontSize) || 17;
     nameEl.classList.toggle('in-steps', depth > 0);
     nameEl.style.paddingLeft = (Math.max(0, depth - 1) * 1.3 * stepPx) + 'px';
-    box.style.display = 'flex';   // 左に場所とファイル名、右上にボタンを並べる（2026-10-31 変更）
   }
 
   function openFile(winPath) {
@@ -1191,7 +1197,11 @@
   function renderTree(data, keepScroll) {
     var menu = menuEl;
     var st = treeEl ? treeEl.scrollTop : 0;   // スクロールはツリー自身が持つ
+    var prevRoot = treeRootPath;
     if (data.path) treeRootPath = data.path;
+    // ツリーより先に開いたファイル（?open= や、ページを開いた直後）は、作業フォルダが分からないまま
+    // 場所の階段を描いていて、C: から始まる絶対パスになっている。作業フォルダが分かった時点で描き直す（2026-10-31）
+    if (titlePath && treeRootPath !== prevRoot) layoutFileTitle(titlePath);
     flatIndex = [];
     buildIndex(data.children || []);
     treeEl.innerHTML = render(data.children || [], 0);
