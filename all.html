@@ -762,10 +762,12 @@
 
   // ビューア上部に、場所の階段と、そのいちばん下の段のファイル名を出す（場所は作業フォルダ以降）
   var titlePath = '';   // 帯に出しているファイルのパス。ツリーを読み込み終えたときに階段を描き直すために覚える
+  var titlePrefix = ''; // 帯のファイル名の頭書き（差分の表示なら「差分: 」）
   function showFileTitle(winPath, prefix) {
     var box = document.getElementById('fileTitle');
     if (!box) return;
     titlePath = winPath;
+    titlePrefix = prefix || '';
     document.getElementById('fileTitleName').textContent = (prefix || '') + baseName(winPath);
     layoutFileTitle(winPath);
     box.style.display = 'flex';   // 左に場所とファイル名、右上にボタンを並べる（2026-10-31 変更）
@@ -779,6 +781,15 @@
     var stepPx = parseFloat(getComputedStyle(dirEl).fontSize) || 17;
     nameEl.classList.toggle('in-steps', depth > 0);
     nameEl.style.paddingLeft = (Math.max(0, depth - 1) * 1.3 * stepPx) + 'px';
+  }
+
+  // srcdoc で出す文書に、どのファイルのものかの印を埋める（2026-10-31 追加）。
+  // 「戻る」で前の文書に戻ったとき、帯・パス欄・ツリーをその文書に合わせるのに使う（shownDocOf）
+  function markDoc(html, winPath, prefix) {
+    var tag = '<meta name="hhscope-path" content="' + esc(winPath) + '">'
+      + (prefix ? '<meta name="hhscope-prefix" content="' + esc(prefix) + '">' : '');
+    var i = html.indexOf('<head>');
+    return i >= 0 ? html.slice(0, i + 6) + tag + html.slice(i + 6) : tag + html;
   }
 
   function openFile(winPath) {
@@ -804,8 +815,8 @@
     if (isSelfViewer(winPath)) {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = textHtml(t, 'このファイルはこのビューア自身（all.html）です。入れ子表示を避けるため、ソースを表示しています。', 'xml');
-      }).catch(function () { iframe.srcdoc = errHtml('ファイル読込エラー'); });
+        iframe.srcdoc = markDoc(textHtml(t, 'このファイルはこのビューア自身（all.html）です。入れ子表示を避けるため、ソースを表示しています。', 'xml'), winPath);
+      }).catch(function () { iframe.srcdoc = markDoc(errHtml('ファイル読込エラー'), winPath); });
       return;
     }
     if (ext === '.pdf') {
@@ -828,15 +839,15 @@
     if (ext === '.md') {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = mdHtml(addHeadingIds(marked.parse(stripFrontmatter(t))), dirName(winPath));
-      }).catch(function () { iframe.srcdoc = errHtml('MD読込エラー'); });
+        iframe.srcdoc = markDoc(mdHtml(addHeadingIds(marked.parse(stripFrontmatter(t))), dirName(winPath)), winPath);
+      }).catch(function () { iframe.srcdoc = markDoc(errHtml('MD読込エラー'), winPath); });
       return;
     }
     if (ext === '.diff' || ext === '.patch') {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = diffHtml(t);
-      }).catch(function () { iframe.srcdoc = errHtml('差分の読込エラー'); });
+        iframe.srcdoc = markDoc(diffHtml(t), winPath);
+      }).catch(function () { iframe.srcdoc = markDoc(errHtml('差分の読込エラー'), winPath); });
       return;
     }
     if (ext === '.svg') {
@@ -848,8 +859,8 @@
       var svgWin = winPath.replace(/\\([^\\]+)\.puml$/i, '\\_svg\\$1.svg');
       function pumlShow(svg) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = '<html><head><meta charset="UTF-8"></head>'
-          + '<body style="margin:0;padding:12px;background:#fff;">' + svg + '</body></html>';
+        iframe.srcdoc = markDoc('<html><head><meta charset="UTF-8"></head>'
+          + '<body style="margin:0;padding:12px;background:#fff;">' + svg + '</body></html>', winPath);
       }
       function pumlFallback() {
         return fetch(toUrl(svgWin) + '&t=' + Date.now()).then(function (r) {
@@ -857,7 +868,7 @@
         }).then(function (svg) {
           if (svg) { pumlShow(svg); return; }
           return fetch(toUrl(winPath) + '&t=' + Date.now()).then(function (r2) { return r2.text(); }).then(function (t) {
-            iframe.srcdoc = textHtml(t, '図の生成に失敗したため、PlantUML のソースを表示しています。', '');
+            iframe.srcdoc = markDoc(textHtml(t, '図の生成に失敗したため、PlantUML のソースを表示しています。', ''), winPath);
           });
         });
       }
@@ -873,17 +884,17 @@
       // 画像は枠の幅に収めて表示する（生のまま出すと原寸で横にはみ出す）。
       // srcdoc は親ページと同じ基点なので、相対URLの serve でそのまま届く
       iframe.removeAttribute('src');
-      iframe.srcdoc = '<html><head><meta charset="UTF-8"></head>'
+      iframe.srcdoc = markDoc('<html><head><meta charset="UTF-8"></head>'
         + '<body style="margin:0;padding:10px;background:#6b6b6b;text-align:center">'
         + '<img src="' + esc(url + '&t=' + Date.now()) + '" style="max-width:100%;height:auto;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.45)">'
-        + '</body></html>';
+        + '</body></html>', winPath);
       return;
     }
     if (TEXT_EXT.indexOf(ext) >= 0 || ext === '') {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
-        iframe.srcdoc = textHtml(t, '', hlLangOf(ext));
-      }).catch(function () { iframe.srcdoc = errHtml('ファイル読込エラー'); });
+        iframe.srcdoc = markDoc(textHtml(t, '', hlLangOf(ext)), winPath);
+      }).catch(function () { iframe.srcdoc = markDoc(errHtml('ファイル読込エラー'), winPath); });
       return;
     }
     iframe.removeAttribute('srcdoc'); iframe.src = url + '&t=' + Date.now();
@@ -1119,11 +1130,11 @@
   // serve 経由で表示したHTML（同一オリジン）にも、読み込み後にリンク振り分けを仕込む。
   // 外部URLは新しいタブ、ファイルへの相対リンクはビューア自身で開く
   iframe.addEventListener('load', function () {
-    if (!iframe.getAttribute('src')) return;   // srcdoc表示は各テンプレ側のスクリプトが担当
-    var doc;
-    try { doc = iframe.contentDocument; } catch (e) { return; }   // PDFプラグイン等は触れない
-    if (!doc || !doc.addEventListener) return;
-    var baseDir = dirName(currentWin);
+    // srcdoc表示は各テンプレ側のスクリプトが担当。「戻る」で srcdoc の文書に戻ったときも iframe の src 属性は
+    // 残ったままなので、属性ではなく、いま出ている文書の場所で見分ける（2026-10-31 変更）
+    var doc, href;
+    try { doc = iframe.contentDocument; href = iframe.contentWindow.location.href || ''; } catch (e) { return; }   // PDFプラグイン等は触れない
+    if (!doc || !doc.addEventListener || !/\/serve\?/.test(href)) return;
     doc.addEventListener('click', function (e) {
       var a = e.target && e.target.closest ? e.target.closest('a') : null;
       if (!a) return;
@@ -1132,10 +1143,41 @@
       e.preventDefault();
       if (h.indexOf('//') === 0) { window.open('https:' + h, '_blank', 'noopener'); return; }
       if (/^[a-z][a-z0-9+.-]*:/i.test(h)) { window.open(a.href, '_blank', 'noopener'); return; }
-      var p = resolveRelPath(baseDir, h);
+      var p = resolveRelPath(dirName(currentWin), h);   // 基点は押した時点のファイル（「戻る」で文書が替わっても合う）
       if (p) { openFile(p); revealInTree(p); }
     });
   });
+
+  // 本文の枠のページが「戻る」「進む」などで変わったら、帯、パス欄、ツリーをそのページに合わせる（2026-10-31 本人指示）。
+  // パス欄やリンクから開いたときは openFile が先に帯を合わせているので、ここでは何もしない
+  iframe.addEventListener('load', function () {
+    var shown = shownDocOf();
+    if (!shown || (samePath(shown.p, titlePath) && shown.prefix === titlePrefix)) return;
+    urlInput.value = shown.p;
+    updateClearBtn();
+    showFileTitle(shown.p, shown.prefix);
+    if (shown.prefix) { document.getElementById('editBtn').style.display = 'none'; return; }   // 差分の表示は showDiff と同じく currentWin を変えない
+    currentWin = shown.p;
+    updateBmBtn();
+    document.getElementById('editBtn').style.display = (EDIT_EXT.indexOf(extOf(shown.p)) >= 0) ? '' : 'none';
+    revealInTree(shown.p);
+  });
+  // 本文の枠にいま出ている文書が、どのファイルのものかを返す。serve の URL ならその p、srcdoc なら markDoc の印から読む
+  function shownDocOf() {
+    var doc, href;
+    try { doc = iframe.contentDocument; href = iframe.contentWindow.location.href || ''; } catch (e) { return null; }
+    if (!doc) return null;
+    if (href.indexOf('about:srcdoc') === 0) {
+      var m = doc.querySelector('meta[name="hhscope-path"]');
+      if (!m) return null;
+      var pre = doc.querySelector('meta[name="hhscope-prefix"]');
+      return { p: m.getAttribute('content') || '', prefix: pre ? (pre.getAttribute('content') || '') : '' };
+    }
+    var mm = href.match(/\/serve\?(?:[^#]*&)?p=([^&#]*)/);
+    if (!mm) return null;
+    try { return { p: decodeURIComponent(mm[1]), prefix: '' }; } catch (e) { return null; }
+  }
+  function samePath(a, b) { return String(a || '').toLowerCase() === String(b || '').toLowerCase(); }
 
   // このビューア自身（mydocs\all.html）かどうか
   function isSelfViewer(winPath) {
@@ -1353,9 +1395,9 @@
         iframe.removeAttribute('src');
         if (!res.ok) {
           var jp = res.t.indexOf('not a git repository') >= 0 ? 'gitリポジトリではありません' : res.t;
-          iframe.srcdoc = errHtml('差分を取得できません: ' + esc(jp));
+          iframe.srcdoc = markDoc(errHtml('差分を取得できません: ' + esc(jp)), p, '差分: ');
         } else {
-          iframe.srcdoc = diffHtml(res.t);
+          iframe.srcdoc = markDoc(diffHtml(res.t), p, '差分: ');
         }
         msg.textContent = '';
       })
