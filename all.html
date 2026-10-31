@@ -113,8 +113,10 @@
   #copyBtn.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
   /* 開いているファイル名の帯（パス欄の下に常時表示。どの拡張子でも出す） */
   /* 場所の階段のいちばん下の段にファイル名を入れる（2026-10-31 本人指示。前は1段目にファイル名だけの行があった） */
+  /* 帯は本文で使わない薄いベージュにし、本文との境目に濃いめの線を引く（2026-10-31 本人指示。
+     白い地が続いて、ボタンの列・帯・本文が混ざって見えたため。本文の見出しは水色なので、水色だと本文の一部に見える） */
   .file-title { display: block; padding: 5px 10px;
-    background: #fff; border-bottom: 1px solid #ddd; overflow: hidden; }
+    background: #f3eee4; border-bottom: 2px solid #c2b08c; overflow: hidden; }
   /* ファイル名は、見てすぐ気づくように 22px の太字にした（2026-10-31 本人指示。前は 17px） */
   #fileTitleName { display: block; font-size: 22px; font-weight: bold; color: #1a1a1a;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
