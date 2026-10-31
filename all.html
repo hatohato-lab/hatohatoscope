@@ -112,14 +112,17 @@
   #diffBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   #copyBtn.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
   /* 開いているファイル名の帯（パス欄の下に常時表示。どの拡張子でも出す） */
-  /* 1段目＝ファイル名、2段目＝場所（2026-09-19 変更。仕事側のビューアと同じ2段の形） */
+  /* 場所の階段のいちばん下の段にファイル名を入れる（2026-10-31 本人指示。前は1段目にファイル名だけの行があった） */
   .file-title { display: block; padding: 5px 10px;
     background: #fff; border-bottom: 1px solid #ddd; overflow: hidden; }
-  #fileTitleName { display: block; font-size: 17px; font-weight: bold; color: #1a1a1a;
+  /* ファイル名は、見てすぐ気づくように 22px の太字にした（2026-10-31 本人指示。前は 17px） */
+  #fileTitleName { display: block; font-size: 22px; font-weight: bold; color: #1a1a1a;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* 2段目の場所は1階層1行の階段で出す（2026-10-03 本人指示。1行に詰めると、長いフォルダ名が続いたとき切れて読めない） */
-  /* 字の大きさは 12px では読みにくかったため 15px にした（2026-10-04 本人指示） */
-  #fileTitleDir { display: block; font-size: 15px; color: #555; line-height: 1.45; }
+  /* 頭の └ はフォルダの段と同じ大きさで出す。字下げは showFileTitle が段の深さから付ける */
+  #fileTitleName.in-steps::before { content: '└ '; font-size: 17px; color: #555; }
+  /* 場所は1階層1行の階段で出す（2026-10-03 本人指示。1行に詰めると、長いフォルダ名が続いたとき切れて読めない） */
+  /* 字の大きさは 12px では読みにくかったため 15px にし（2026-10-04）、さらに 17px の太字にした（2026-10-31 本人指示） */
+  #fileTitleDir { display: block; font-size: 17px; font-weight: bold; color: #555; line-height: 1.45; }
   #fileTitleDir .dir-step { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* 各階層はリンク。押すとツリーでそのフォルダまで開く（2026-10-03 本人指示） */
   #fileTitleDir a.dir-link { color: #1a4f8a; text-decoration: underline; cursor: pointer; }
@@ -347,7 +350,7 @@
       <span id="saveMsg" style="margin-left:8px;font-size:13px;color:#178a3a;"></span>
     </div>
     <div class="file-title" id="fileTitle" style="display:none;">
-      <span id="fileTitleName"></span><span id="fileTitleDir"></span>
+      <span id="fileTitleDir"></span><span id="fileTitleName"></span>
       <button id="outlineBtn" title="目次の表示 / 非表示">目次</button>
       <button id="maxBtn" title="表示中のファイルを画面いっぱいに広げる（右上の「元に戻す」か Esc で戻る）">最大化</button>
     </div>
@@ -703,6 +706,7 @@
 
   // 場所を1階層1行の階段で出す。2階層目からは頭に └ を付け、1段ごとに字下げを深くする
   // 各階層はリンクにし、押した先の絶対パスを data-path に持たせる（2026-10-03 本人指示）
+  // 戻り値は出した段の数。ファイル名をその下の段に置くために使う（2026-10-31 追加）
   function renderDirSteps(box, winPath) {
     var rel = String(bmRelDir(winPath) || '');
     box.textContent = '';
@@ -714,7 +718,7 @@
       only.className = 'dir-step';
       only.textContent = rel;
       box.appendChild(only);
-      return;
+      return 1;
     }
     var parts = rel.split(/[\\\/]+/).filter(function (s) { return s; });
     var absParts = dir.split(/[\\\/]+/).filter(function (s) { return s; });
@@ -732,6 +736,7 @@
       line.appendChild(a);
       box.appendChild(line);
     });
+    return parts.length;
   }
   // 階層のリンクを押したら、ツリーでそのフォルダまで開く。ツリーにまだ無ければ再スキャンしてから開く
   var fileTitleDirEl = document.getElementById('fileTitleDir');
@@ -747,13 +752,19 @@
     });
   });
 
-  // ビューア上部にファイル名を大きく表示する（場所は作業フォルダ以降を添える）
+  // ビューア上部に、場所の階段と、そのいちばん下の段のファイル名を出す（場所は作業フォルダ以降）
   function showFileTitle(winPath, prefix) {
     var box = document.getElementById('fileTitle');
     if (!box) return;
-    document.getElementById('fileTitleName').textContent = (prefix || '') + baseName(winPath);
-    renderDirSteps(document.getElementById('fileTitleDir'), winPath);
-    box.style.display = 'block';   // 2段組みなので block（flexだと横並びに戻る）
+    var nameEl = document.getElementById('fileTitleName');
+    var dirEl = document.getElementById('fileTitleDir');
+    nameEl.textContent = (prefix || '') + baseName(winPath);
+    var depth = renderDirSteps(dirEl, winPath);
+    // ファイル名の段の字下げは、フォルダの段と同じ「1段 1.3 文字」。フォルダの段の字の大きさで測ってそろえる
+    var stepPx = parseFloat(getComputedStyle(dirEl).fontSize) || 17;
+    nameEl.classList.toggle('in-steps', depth > 0);
+    nameEl.style.paddingLeft = (Math.max(0, depth - 1) * 1.3 * stepPx) + 'px';
+    box.style.display = 'block';   // 縦に積むので block（flexだと横並びに戻る）
   }
 
   function openFile(winPath) {
