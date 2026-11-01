@@ -207,7 +207,8 @@
   .tree-f-icon { flex: 0 0 auto; margin-right: 4px; font-size: 12px; }
   .tree-file a { flex: 1 1 auto; padding: 2px 0 2px 2px; color: #1a4f8a; text-decoration: none; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tree-file a:hover { background: #e8e8e8; text-decoration: underline; }
-  .tree-file a.active { background: #d6e4f5; font-weight: bold; }
+  /* 選んでいるファイルの行は、蛍光ペンのような明るい黄色にする（2026-11-01 本人指示。前の薄い青は暗く見えたため） */
+  .tree-file a.active { background: #fff59d; font-weight: bold; }
   .tree-file a.nonview { color: #777; cursor: default; }
   /* git状態の色つけ（VS Code風：変更=オレンジ・新規=緑） */
   .tree-file a.git-mod { color: #b45f06; }
@@ -314,8 +315,8 @@
   #topTree { height: 300px; overflow-y: auto; overflow-x: hidden; }
   .top-resize { height: 6px; margin-top: 3px; background: #d5d5d5; border-radius: 3px; cursor: row-resize; }
   .top-resize:hover, .top-resize.dragging { background: #1a4f8a; }
-  /* 上のツリーで選んでいるフォルダの行。ファイルは下のツリーと同じ a.active の色で示す */
-  .tree-folder-name.top-target { background: #d6e4f5; border-color: #8fb0d8; }
+  /* 上のツリーで選んでいるフォルダの行。ファイルの a.active と同じ明るい黄色にそろえる（2026-11-01 本人指示） */
+  .tree-folder-name.top-target { background: #fff59d; border-color: #e0c341; }
   /* そろえたフォルダから選んだもののすぐ上までの行は、中身を下へ送っても上の端に貼り付ける。
      上からの位置と重なりの順は setTopSticky が行ごとに付ける */
   .tree-folder-name.top-stick { position: sticky; }
