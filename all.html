@@ -461,10 +461,10 @@
                   '.gitignore','.env'];
   var STORAGE = 'allViewerOpenFolders';
   var currentMenuMode = 'left';   // 'left' | 'bottom' | 'popup'（下の表示モードIIFEが設定する）
-  // ブックマークは 2026-10-31 に止めた（本人指示。あまり使わないため。欄の場所は上のツリーに譲った）。
-  // 欄・上部の★ボタン・右クリックの登録・行頭の c の黄色を出さない。コードと登録済みの一覧（api/bookmarks.json）は残してある。
-  // 戻すときはここを true にする。ブックマーク欄は、上のツリーの上に戻る
-  var BM_ENABLED = false;
+  // ブックマークは 2026-10-31 に止め、2026-11-01 に戻した（本人指示「やっぱりブックマークがないと分かりづらい」）。
+  // 欄は上のツリー（選んだ場所の階層）の上に出る。止めるときはここを false にする
+  // （欄・上部の★ボタン・右クリックの登録・行頭の c の黄色が消える。登録済みの一覧 api/bookmarks.json は残る）
+  var BM_ENABLED = true;
 
   function getOpen() { try { return JSON.parse(localStorage.getItem(STORAGE)) || []; } catch (e) { return []; } }
   function setOpen(a) { try { localStorage.setItem(STORAGE, JSON.stringify(a)); } catch (e) {} }
