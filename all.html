@@ -177,6 +177,14 @@
   .tree-folder-name:hover { background: #dbe6f3; border-color: #b6cbe4; }
   .tree-folder-icon { display: inline-block; width: 1.4em; flex: 0 0 auto; color: #555; }
   .tree-folder-label { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+  /* 作業フォルダ直下のフォルダの行に、中のファイルの数を薄い棒と数字で出す（2026-11-01 本人指示。ヒートマップ）。
+     棒の長さは対数の目盛り（1・10・100・1,000・10,000件が等間隔）で、一番多いフォルダを行の幅いっぱいにする。
+     棒は z-index:-1 で、帯の地の色と文字の間に敷く。isolation で重なりを行の中に閉じる。
+     棒の位置の基準にするため行を relative にするが、上のツリーで貼り付けている行（.top-stick）は sticky のままにする */
+  .tree-folder-name.has-count { isolation: isolate; }
+  .tree-folder-name.has-count:not(.top-stick) { position: relative; }
+  .tree-count-bar { position: absolute; left: 0; top: 0; bottom: 0; z-index: -1; background: rgba(31, 111, 178, 0.18); border-radius: 3px; pointer-events: none; }
+  .tree-count { flex: 0 0 auto; margin-left: 8px; font-weight: normal; color: #333; font-variant-numeric: tabular-nums; }
   .tree-folder-content {
     margin-left: 8px; padding-left: 12px;
     border-left: 1px solid #c4c4c4;   /* 階層の縦ガイド線 */
@@ -502,11 +510,30 @@
     return m[extOf(name)] || '📄';
   }
 
+  // 作業フォルダ直下の各フォルダの中のファイル数（パスの小文字 → 件数）と、その一番大きい値（2026-11-01 本人指示。ヒートマップ）。
+  // renderTree が数え、folderRowHtml が行に薄い棒と数字で出す。数えるのはツリーに出ているファイルだけ（深さ6まで、.git などは除く）
+  var topCounts = {}, topCountMax = 0;
+  function countFiles(node) {
+    var n = 0;
+    (node.children || []).forEach(function (c) { n += c.children ? countFiles(c) : 1; });
+    return n;
+  }
+  // 棒の長さ（%）。対数の目盛りにする。01_myrepo だけが3万件を超え、件数の比のままでは
+  // ほかのほとんどの棒が幅の2%に届かず見えないため。一番多いフォルダが 100%、0件は棒なし
+  function countBarWidth(n) {
+    if (!n || topCountMax < 1) return 0;
+    return Math.round(Math.log10(n + 1) / Math.log10(topCountMax + 1) * 1000) / 10;
+  }
+
   // ツリーの1行の形。下のツリーと上のツリー（2026-10-31 追加）で同じものを使い、見た目をそろえる
   function folderRowHtml(it, isOpen) {
-    return '<span class="tree-folder-name" data-path="' + esc(it.path) + '" data-open="' + isOpen + '">'
+    var n = topCounts[it.path.toLowerCase()];
+    var has = n !== undefined;
+    return '<span class="tree-folder-name' + (has ? ' has-count' : '') + '" data-path="' + esc(it.path) + '" data-open="' + isOpen + '">'
+      + (has ? '<span class="tree-count-bar" style="width:' + countBarWidth(n) + '%;"></span>' : '')
       + '<span class="tree-c-copy" data-path="' + esc(it.path) + '" title="パスをコピー">c</span>'
       + '<span class="tree-folder-label">' + esc(it.name) + '</span>'
+      + (has ? '<span class="tree-count">' + n.toLocaleString('ja-JP') + '</span>' : '')
       + '</span>';
   }
   function fileRowHtml(it) {
@@ -1328,6 +1355,14 @@
     buildIndex(data.children || []);
     addedRoots = {};
     (data.children || []).forEach(function (it) { if (it.added) addedRoots[it.path.toLowerCase()] = true; });
+    // 作業フォルダ直下のフォルダごとにファイルを数える（行を作る前に。外の閲覧範囲は数えない）
+    topCounts = {}; topCountMax = 0;
+    (data.children || []).forEach(function (it) {
+      if (!it.children || !inWorkspace(it.path)) return;
+      var n = countFiles(it);
+      topCounts[it.path.toLowerCase()] = n;
+      if (n > topCountMax) topCountMax = n;
+    });
     treeData = data;
     treeEl.innerHTML = render(data.children || [], 0);
     // 絞り込み中なら、描き直したツリーにも同じ絞り込みをかけ直す
