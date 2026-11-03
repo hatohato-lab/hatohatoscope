@@ -76,7 +76,16 @@
   .grep-item .gtext { font-size: 12.5px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* min-width:0 が無いと、長いファイル名の帯（#fileTitleName は nowrap）が縮まず、
      ページ全体に横スクロールが出る（2026-09-26 本人指示で修正） */
-  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
+  /* 左メニューと本文の境目のつまみ（2026-11-03 本人指示。はとはとブログの「メニュー非表示」のつまみの形）。
+     本文の左の端に、上下の真ん中で貼り付ける。本文の左の端は、メニューを開いていれば境目、閉じていれば画面の左の端になる */
+  .menu-tab { position: absolute; left: 0; top: 50%; transform: translateY(-50%); z-index: 40;
+    writing-mode: vertical-rl; padding: 12px 4px; font-family: inherit; font-size: 13px; letter-spacing: 2px;
+    color: #fff; background: #1a4f8a; border: none; border-radius: 0 6px 6px 0;
+    box-shadow: 1px 1px 4px rgba(0,0,0,.25); cursor: pointer; opacity: .85; }
+  .menu-tab:hover { opacity: 1; background: #123a66; }
+  /* メニューを下や別窓に出しているとき、最大化しているときは出さない */
+  .container.mode-bottom .menu-tab, .container.mode-detached .menu-tab, body.maximized .menu-tab { display: none; }
   /* flex-wrap:wrap が無いと、窓を狭めた時や左メニューを広げた時に、
      ボタンの並びが縮まずページ全体に横スクロールが出る（2026-09-26 修正） */
   .url-bar { display: flex; flex-wrap: wrap; align-items: center; padding: 6px; border-bottom: 1px solid #ccc; background: #fafafa; gap: 6px; }
@@ -224,26 +233,16 @@
   .tree-d-btn { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #b45f06; background: #fdf0e0; border: 1px solid #e8c9a0; border-radius: 3px; cursor: pointer; user-select: none; }
   .tree-d-btn:hover { background: #b45f06; color: #fff; border-color: #b45f06; }
   /* ===== ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） =====
-     パス欄のすぐ下の1行に、登録した順で「印＋名前」を横に並べる。入りきらない分は右端の » の一覧に回す。
+     パス欄のすぐ下に、登録した順で「印＋名前」を横に並べ、帯の中で折り返して全部を出す
+     （本人指示「全部詰め込んで表示する。箱の中に」。はじめは1行にして、入りきらない分を右端の » の一覧に回していた）。
      前は左のメニューの上に欄があり、ツリーの場所を狭めていた */
-  .bm-bar { position: relative; display: flex; align-items: center; gap: 4px; padding: 2px 6px;
-    background: #fafafa; border-bottom: 1px solid #ccc; }
-  .bm-bar-items { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+  .bm-bar { display: flex; padding: 2px 6px; background: #fafafa; border-bottom: 1px solid #ccc; }
+  .bm-bar-items { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
   .bm-chip { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; max-width: 11em;
     padding: 2px 8px; border-radius: 12px; font-size: 14px; color: #1a1a1a; cursor: pointer;
     white-space: nowrap; user-select: none; }
   .bm-chip-name { overflow: hidden; text-overflow: ellipsis; }
-  .bm-chip:hover, .bm-more-item:hover { background: #dbe6f3; }
-  /* 入りきらずに » の一覧へ回したもの。帯からは隠す */
-  .bm-chip.bm-over { display: none; }
-  /* 出し入れは layoutBmBar が style.display で行う（CSS で none にすると、'' に戻しても出なくなる） */
-  #bmMoreBtn { flex: 0 0 auto; font-size: 13px; padding: 1px 8px; cursor: pointer; }
-  .bm-more { position: absolute; right: 6px; top: 100%; z-index: 60; min-width: 260px; max-width: 460px;
-    max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid #bbb; border-radius: 4px;
-    box-shadow: 0 4px 10px rgba(0,0,0,.18); padding: 4px 0; }
-  .bm-more-item { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 14px;
-    cursor: pointer; white-space: nowrap; }
-  .bm-more-sweep { border-top: 1px solid #ddd; margin-top: 4px; padding-top: 6px; color: #a3242a; }
+  .bm-chip:hover { background: #dbe6f3; }
   /* 場所が見つからないブックマーク（消したか、移したもの）。薄くし、名前に取り消し線を引く */
   .bm-dead { opacity: .55; }
   .bm-dead .bm-chip-name { text-decoration: line-through; }
@@ -330,6 +329,8 @@
   </nav>
   <div class="dragbar" id="dragbar" title="ドラッグで幅を変更"></div>
   <main class="content">
+    <!-- 左メニューの開け閉めのつまみ（2026-11-03 本人指示） -->
+    <button id="menuTab" class="menu-tab" title="左メニューを隠す（Ctrl+B）">メニュー非表示</button>
     <div class="url-bar">
       <button id="toggleMenuBtn" title="メニューを隠す / 表示する（Ctrl+B）">◀</button>
       <button id="modeBottomBtn" class="mode-btn" title="メニューを画面下に移す / 左に戻す（横幅を空ける）">下</button>
@@ -351,8 +352,6 @@
     <!-- ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） -->
     <div class="bm-bar" id="bmBar" style="display:none;">
       <div class="bm-bar-items" id="bmBarItems"></div>
-      <button id="bmMoreBtn" style="display:none;">»</button>
-      <div class="bm-more" id="bmMore" style="display:none;"></div>
     </div>
     <div class="file-title" id="fileTitle" style="display:none;">
       <div class="file-title-main"><span id="fileTitleDir"></span><span id="fileTitleName"></span></div>
@@ -424,8 +423,6 @@
   var searchInputEl = document.getElementById('searchInput');
   var bmBarEl = document.getElementById('bmBar');
   var bmBarItemsEl = document.getElementById('bmBarItems');
-  var bmMoreBtnEl = document.getElementById('bmMoreBtn');
-  var bmMoreEl = document.getElementById('bmMore');
   var topTreeEl = document.getElementById('topTree');   // 上のツリー（2026-10-31 追加）
   var iframe = document.getElementById('viewer');
   var placeholder = document.getElementById('placeholder');
@@ -2162,7 +2159,7 @@
     return d;   // 作業フォルダの外（.claude 等）は、そのまま出す
   }
   // ===== ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） =====
-  // 登録した順に「印＋名前」を横に並べる。入りきらない分は右端の » の一覧に回す。
+  // 登録した順に「印＋名前」を横に並べ、帯の中で折り返して全部を出す（2026-11-03 本人指示「全部詰め込んで表示する」）。
   // 前は左のメニューの上の欄に、フォルダの入れ子で出していた（2026-09-19〜2026-11-03）
 
   // 帯の1件の印。フォルダは📁、ファイルは .md が📝、.html が🌐、ほかは📄（Chrome の帯のサイトの印の代わり）
@@ -2216,7 +2213,7 @@
   function renderBookmarks() {
     var a = getBm();
     if (!BM_ENABLED || !a.length) {
-      bmBarEl.style.display = 'none'; bmBarItemsEl.innerHTML = ''; bmGoneCount = 0; closeBmMore();
+      bmBarEl.style.display = 'none'; bmBarItemsEl.innerHTML = ''; bmGoneCount = 0;
       return;
     }
     var html = '', gone = 0;
@@ -2230,43 +2227,6 @@
     bmGoneCount = gone;
     bmBarItemsEl.innerHTML = html;
     bmBarEl.style.display = '';
-    closeBmMore();
-    layoutBmBar();
-  }
-  // 帯に入りきらないものを、右端の » の一覧へ回す（Chrome と同じ）。幅が変わるたびに測り直す。
-  // 場所が見つからないものがあるときは、まとめて外す入口として » を出しておく
-  function layoutBmBar() {
-    if (!bmBarEl || bmBarEl.style.display === 'none') return;
-    var chips = Array.prototype.slice.call(bmBarItemsEl.querySelectorAll('.bm-chip'));
-    chips.forEach(function (c) { c.classList.remove('bm-over'); });
-    bmMoreBtnEl.style.display = 'none';
-    var edge = function () { return bmBarItemsEl.getBoundingClientRect().right + 0.5; };
-    var over = chips.length && chips[chips.length - 1].getBoundingClientRect().right > edge();
-    if (!over && !bmGoneCount) return;
-    bmMoreBtnEl.style.display = '';   // ボタンの分だけ帯が縮むので、出してから測る
-    var right = edge(), n = 0;
-    chips.forEach(function (c) {
-      if (n || c.getBoundingClientRect().right > right) { c.classList.add('bm-over'); n++; }
-    });
-    bmMoreBtnEl.textContent = n ? '» ' + n : '»';
-    bmMoreBtnEl.title = [n ? '帯に入りきらないブックマーク（' + n + '件）' : '',
-      bmGoneCount ? '場所が見つからないブックマーク（' + bmGoneCount + '件）' : ''].filter(Boolean).join('／');
-  }
-  if (window.ResizeObserver) new ResizeObserver(function () { layoutBmBar(); }).observe(bmBarEl);
-  function closeBmMore() { if (bmMoreEl) bmMoreEl.style.display = 'none'; }
-  function openBmMore() {
-    var html = '';
-    bmBarItemsEl.querySelectorAll('.bm-chip.bm-over').forEach(function (c) {
-      html += '<div class="bm-more-item' + (c.classList.contains('bm-dead') ? ' bm-dead' : '') + '" data-path="'
-        + esc(c.dataset.path) + '">' + c.innerHTML + '</div>';
-    });
-    if (bmGoneCount) {
-      html += '<div class="bm-more-item bm-more-sweep" data-sweep="1">🧹 場所が見つからないブックマークをまとめて外す（'
-        + bmGoneCount + '件）</div>';
-    }
-    if (!html) return;
-    bmMoreEl.innerHTML = html;
-    bmMoreEl.style.display = 'block';
   }
   // 場所が見つからないブックマークを、まとめて外す。ツリーを読み直してから全部を確かめ直し、外すものの名前を見せて確かめてから外す
   function sweepGoneBms() {
@@ -2323,12 +2283,10 @@
     }
     toggleBm(p);
   });
-  // 帯と » の一覧を押したとき。場所が見つからないものは開かずに知らせる
+  // 帯のブックマークを押したとき。場所が見つからないものは開かずに知らせる
   bmBarEl.addEventListener('click', function (e) {
-    if (e.target.closest('[data-sweep]')) { closeBmMore(); sweepGoneBms(); return; }
-    var el = e.target.closest('.bm-chip, .bm-more-item');
+    var el = e.target.closest('.bm-chip');
     if (!el || !el.dataset.path) return;
-    closeBmMore();
     if (el.classList.contains('bm-dead')) {
       flashMsg('場所が見つかりません（消したか、移したようです）。右クリックで外せます: ' + baseName(el.dataset.path), '#c00');
       return;
@@ -2337,7 +2295,7 @@
   });
   // 右クリックのメニュー。外す、パスのコピー、場所が見つからないものをまとめて外す
   bmBarEl.addEventListener('contextmenu', function (e) {
-    var el = e.target.closest ? e.target.closest('.bm-chip, .bm-more-item') : null;
+    var el = e.target.closest ? e.target.closest('.bm-chip') : null;
     if (!el || !el.dataset.path) return;
     e.preventDefault();
     var p = el.dataset.path;
@@ -2352,18 +2310,8 @@
     if (bmGoneCount) {
       items.push({ label: '🧹 場所が見つからないブックマークをまとめて外す（' + bmGoneCount + '件）', run: sweepGoneBms });
     }
-    closeBmMore();
     showCtxMenu(document, e.clientX, e.clientY, items);
   });
-  bmMoreBtnEl.addEventListener('click', function (e) {
-    e.stopPropagation();
-    if (bmMoreEl.style.display === 'block') closeBmMore(); else openBmMore();
-  });
-  // 一覧の外を押したとき、Esc を押したときは閉じる
-  document.addEventListener('mousedown', function (e) {
-    if (bmMoreEl.style.display === 'block' && !bmMoreEl.contains(e.target) && !bmMoreBtnEl.contains(e.target)) closeBmMore();
-  });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeBmMore(); });
   urlInput.addEventListener('input', updateBmBtn);
 
   // ===== ツリーとブックマーク欄の対応を知らせる（2026-09-21 本人指示） =====
@@ -2389,11 +2337,10 @@
     var r = t.closest('.bm-chip');
     return r ? (r.dataset.path || '') : '';
   }
-  // 帯は件数が少ないので総なめしてよい。ツリーは数万行あるので属性セレクタで1回だけ引く。
-  // » の一覧に回したものは、光らせても見えないので返さない
+  // 帯は件数が少ないので総なめしてよい。ツリーは数万行あるので属性セレクタで1回だけ引く
   function bmRowsFor(key) {
     var out = [];
-    bmBarItemsEl.querySelectorAll('.bm-chip:not(.bm-over)').forEach(function (el) {
+    bmBarItemsEl.querySelectorAll('.bm-chip').forEach(function (el) {
       if (pathKey(el.dataset.path) === key) out.push(el);
     });
     return out;
@@ -2418,7 +2365,7 @@
     xlinkEls = els; xlinkKey = mark;
   }
   // ツリーの行を押したとき、同じパスのブックマークを帯の上で2秒だけ光らせる（2026-09-22 本人指示。2026-11-03 帯に移した）。
-  // ブックマークに無い行と、» の一覧に回したものは光らせない
+  // ブックマークに無い行を押したときは光らせない
   var bmHitEl = null, bmHitTimer = 0;
   function revealBmRow(p) {
     var key = pathKey(p);
@@ -3010,6 +2957,7 @@
     var menu = document.querySelector('.menu');
     var dragbar = document.getElementById('dragbar');
     var btn = document.getElementById('toggleMenuBtn');
+    var tab = document.getElementById('menuTab');   // 境目のつまみ（2026-11-03 本人指示）
     var KEY = 'allViewerMenuHidden';
     if (!menu || !btn) return;
 
@@ -3019,6 +2967,10 @@
       // 隠しても幅の設定は残るので、表示に戻すと元の幅に復帰する
       btn.textContent = hidden ? '▶' : '◀';
       btn.title = (hidden ? '左メニューを表示する' : '左メニューを隠す') + '（Ctrl+B）';
+      if (tab) {
+        tab.textContent = hidden ? 'メニュー表示' : 'メニュー非表示';
+        tab.title = btn.title;
+      }
     }
     function set(hidden) {
       apply(hidden);
@@ -3031,6 +2983,7 @@
     apply(saved === '1');
 
     btn.addEventListener('click', function () { set(!isHidden()); });
+    if (tab) tab.addEventListener('click', function () { set(!isHidden()); });
     document.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'b' || e.key === 'B')) {
         e.preventDefault();
@@ -3088,7 +3041,7 @@
   var tipRow = null;
   function tipRowOf(t) {
     if (!t || !t.closest) return null;
-    return t.closest('.tree-file, .tree-folder-name, .bm-chip, .bm-more-item');
+    return t.closest('.tree-file, .tree-folder-name, .bm-chip');
   }
   function tipTextOf(row) {
     // 行の頭の c（パスのコピー）が絶対パスを持っている。無い行は行そのものの data-path、それも無ければ名前
