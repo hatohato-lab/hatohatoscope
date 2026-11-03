@@ -281,8 +281,6 @@
   /* 高さは並べた段の数に合わせる（2026-11-03。前は高さを決めて下端のつまみで変えていた）。段がとても多いときだけ欄の中で送る */
   #topTree { max-height: 45vh; overflow-y: auto; overflow-x: hidden; }
   .top-empty { font-size: 13px; color: #333; padding: 2px 4px; }
-  /* 選んでいるフォルダの行。ファイルの a.active と同じ明るい黄色にそろえる（2026-11-01 本人指示） */
-  .tree-folder-name.top-target { background: #fff59d; border-color: #e0c341; }
   /* 行にマウスを乗せたときの吹き出し（2026-09-27 本人指示）。
      ブラウザ標準の吹き出しは出るまで約1秒かかるため自前で出す。待ち時間なし。
      出すのは行までの階層を1階層1行にした階段（2026-10-18 本人指示。名前→絶対パス→階段と変更）。長い名前は折り返す */
@@ -579,7 +577,7 @@
       treeEl.querySelectorAll('a.viewlink.active').forEach(function (x) { x.classList.remove('active'); });
       link.classList.add('active');
       openFile(link.dataset.win);
-      syncTopTree(link.dataset.win, false, { force: true });   // 上のツリーを押した場所に合わせる（2026-10-31）
+      syncTopTree(link.dataset.win, { force: true });   // 同じファイルをもう一度押したときも、選んだ場所の階層を描き直す
       return;
     }
     // フォルダ開閉
@@ -590,7 +588,7 @@
       var c = f.nextElementSibling;
       if (c) c.style.display = isOpen ? 'none' : 'block';
       if (isOpen) rmOpen(f.dataset.path); else addOpen(f.dataset.path);
-      syncTopTree(f.dataset.path, true, { force: true });   // 選んだ場所の階層に、そのフォルダまでの道筋を出す
+      // 選んだ場所の階層は動かさない（2026-11-03 本人指示。階層はいつも本文で開いているファイルの道筋にする）
       return;
     }
   }
@@ -861,6 +859,8 @@
     updateBmBtn();
     addHistory(winPath);
     currentWin = winPath;
+    // 選んだ場所の階層は、いつも本文で開いているファイルの道筋にする（2026-11-03 本人指示）。ツリーに出ないファイルも、パスから道筋を作る
+    syncTopTree(winPath);
     watchGone = '';   // 開き直したので、閲覧範囲から外していたファイルでも、自動の読み直しの確かめを再開する
     var url = toUrl(winPath);
     var ext = extOf(winPath);
@@ -1221,6 +1221,7 @@
     showFileTitle(shown.p, shown.prefix);
     if (shown.prefix) { document.getElementById('editBtn').style.display = 'none'; return; }   // 差分の表示は showDiff と同じく currentWin を変えない
     currentWin = shown.p;
+    syncTopTree(shown.p);
     updateBmBtn();
     document.getElementById('editBtn').style.display = (EDIT_EXT.indexOf(extOf(shown.p)) >= 0) ? '' : 'none';
     revealInTree(shown.p);
@@ -1627,7 +1628,9 @@
   }
 
   // ツリー内に同じファイルがあれば、強調表示して祖先フォルダを展開する。
-  // 上のツリーも同じファイルに合わせる（2026-10-31）。quiet のときは合わせない（裏でツリーを読み直したとき）
+  // 選んだ場所の階層も同じファイルに合わせる（2026-10-31）。quiet のときは合わせない（裏でツリーを読み直したとき）。
+  // ツリーに出ないファイル（除外したフォルダの中、深すぎる場所、作りたてで読み直す前）が本文に開いているときは、
+  // 前のファイルの印を外し、ツリーにあるいちばん近いフォルダまで開いて見せる（2026-11-03 本人指示。左のメニューを本文のファイルに合わせるため）
   function revealInTree(winPath, quiet) {
     var norm = winPath.toLowerCase();
     var links = treeEl.querySelectorAll('a.viewlink');
@@ -1647,14 +1650,24 @@
       }
       scrollTreeItemToTop(link);
       updateTreeGuide();
-      if (!quiet) syncTopTree(link.dataset.win, false);
+      if (!quiet) syncTopTree(link.dataset.win);
       return true;
+    }
+    if (!quiet && samePath(winPath, currentWin)) {
+      treeEl.querySelectorAll('a.viewlink.active').forEach(function (x) { x.classList.remove('active'); });
+      revealNearestFolder(winPath);
     }
     return false;
   }
+  // ツリーにある、そのパスにいちばん近いフォルダまで開いて見せる（2026-11-03）
+  function revealNearestFolder(winPath) {
+    var d = dirName(String(winPath).replace(/\//g, '\\'));
+    while (d && !nodeMap[d.toLowerCase()]) d = dirName(d);
+    if (d) revealFolderInTree(nodeMap[d.toLowerCase()].path);
+  }
   // ツリー内の同じフォルダを探し、祖先ごと展開して強調表示する（見つかれば true）。
-  // keepTop は、選んだ場所の階層の段から呼んだとき。道筋はそのままにする
-  function revealFolderInTree(winPath, keepTop) {
+  // 選んだ場所の階層は動かさない（2026-11-03 本人指示。階層はいつも本文で開いているファイルの道筋にする）
+  function revealFolderInTree(winPath) {
     var norm = winPath.replace(/\//g, '\\').toLowerCase();
     var names = treeEl.querySelectorAll('.tree-folder-name');
     for (var i = 0; i < names.length; i++) {
@@ -1678,7 +1691,6 @@
       // どこに飛んだか分かるよう一瞬ハイライトする
       f.style.background = '#d6e4f5';
       (function (el) { setTimeout(function () { el.style.background = ''; }, 1500); })(f);
-      if (!keepTop) syncTopTree(f.dataset.path, true, { force: true });   // 選んだ場所の階層も同じフォルダに合わせる（2026-10-31）
       return true;
     }
     return false;
@@ -2392,11 +2404,13 @@
   updateBmBtn();  // ブックマークを止めている間は、上部の★ボタンを最初から隠す
 
   // ===== 選んだ場所の階層（2026-10-31 本人指示で作り、2026-11-03 本人指示で道筋だけにした） =====
-  // 下のツリーで選んだファイルかフォルダと、その上のフォルダだけを、上から1段ずつ入れ子で並べる。ほかのファイルやフォルダは出さない
-  // （本人指示「他のものは表示しないということにしてください。その下で開いているファイルやフォルダーの関係するフォルダーへの階層を見れるように」）。
+  // 本文で開いているファイルと、その上のフォルダだけを、上から1段ずつ入れ子で並べる。ほかのファイルやフォルダは出さない
+  // （本人指示「他のものは表示しないということにしてください」）。
   // 前は下と同じ形のツリーを高さを決めて出し、道筋のほかの行も並んでいたので、どこを見ればよいか分かりにくく、場所も取っていた。
+  // 道筋はいつも本文のファイルに合わせ、下のツリーでフォルダを押しても変えない（本人指示「今触っている、画面開いているファイルと
+  // 左のメニューはリンクするようにしたい」。前はフォルダを押すとそのフォルダの道筋に変わり、本文とずれていた）。
   // 何段上まで出すかは見出しのボタン（1つ上〜4つ上、一番上）で決める。欄の高さは段の数に合わせる。
-  // 本文のリンクや「戻る」で下のツリーが動いたときも合わせる。段のフォルダを押すと、下のツリーでそのフォルダまで開く（道筋は動かさない）
+  // 段のフォルダを押すと、下のツリーでそのフォルダまで開く（道筋は動かさない）
   var TOP_UP_KEY = 'allViewerTopUp';
   // 何段上まで出すか。記憶する値は '1'〜'4' と 'all'（3と4は 2026-11-03 本人指示で足した）。
   // 'all'（一番上）は、作業フォルダの直下のフォルダ（外の閲覧範囲は、ツリーの一番上の段のフォルダ）から出す。知らない値は 2 にする
@@ -2407,8 +2421,7 @@
   }
   var topUp = 2;
   try { topUp = topUpOf(localStorage.getItem(TOP_UP_KEY)); } catch (e) {}
-  var topTarget = '';          // 選んでいるもののパス
-  var topTargetDir = false;    // それがフォルダか
+  var topTarget = '';          // 道筋を出しているファイルのパス（本文で開いているファイル）
   var topHoverRow = null;
 
   function attrSel(p) { return String(p).replace(/\\/g, '\\\\').replace(/"/g, '\\"'); }
@@ -2449,10 +2462,10 @@
     }
     return { name: baseName(p), path: p, children: [] };
   }
-  // 道筋を描く。上のフォルダから順に入れ子で並べ、一番下に選んだもの（ファイルかフォルダ）を置く
+  // 道筋を描く。上のフォルダから順に入れ子で並べ、一番下に本文で開いているファイルを置く
   function drawTopTree() {
     if (!topTarget) {
-      topTreeEl.innerHTML = '<div class="top-empty">下のツリーでファイルかフォルダを選ぶと、ここにその場所までの道筋が出ます</div>';
+      topTreeEl.innerHTML = '<div class="top-empty">ファイルを開くと、ここにそのファイルまでの道筋が出ます</div>';
       return;
     }
     var anc = topAncestors(topTarget);
@@ -2463,21 +2476,17 @@
         + '<div class="tree-folder-content" style="display:block;">';
       close = '</div></div>' + close;
     });
-    var t = topNodeOf(topTarget, topTargetDir);
-    html += topTargetDir
-      ? '<div class="tree-folder">' + folderRowHtml(t, false) + '<div class="tree-folder-content" style="display:none;"></div></div>'
-      : fileRowHtml(t);
+    html += fileRowHtml(topNodeOf(topTarget, false));
     topTreeEl.innerHTML = html + close;
     topTreeEl.scrollTop = 0;
     paintGit(topTreeEl);
     markTopTarget();
   }
-  // 選んでいる行に印を付ける。ファイルは下のツリーと同じ a.active、フォルダは帯の色を変える
+  // 道筋の一番下のファイルに、下のツリーと同じ印（a.active の黄色）を付ける
   function markTopTarget() {
     topTreeEl.querySelectorAll('a.viewlink.active').forEach(function (x) { x.classList.remove('active'); });
-    topTreeEl.querySelectorAll('.tree-folder-name.top-target').forEach(function (x) { x.classList.remove('top-target'); });
     var row = topRowOf(topTarget);
-    if (row) row.classList.add(row.classList.contains('tree-folder-name') ? 'top-target' : 'active');
+    if (row && !row.classList.contains('tree-folder-name')) row.classList.add('active');
     updateTopGuide();
   }
   // たどるべき縦線を1本だけ明るくする（下のツリーの updateTreeGuide と同じ決まり）
@@ -2487,19 +2496,19 @@
     var box = row && row.closest ? row.closest('.tree-folder-content') : null;
     if (box) box.classList.add('guide-on');
   }
-  // 下のツリーから呼ぶ。同じパスなら何もしない（自動の読み直しや「再表示」で描き直さないため）。
-  // force は、下のツリーで同じ行をもう一度押したときも描き直すため
-  function syncTopTree(p, isDir, opts) {
+  // 本文でファイルを開いたとき（openFile、本文の「戻る」）と、下のツリーでファイルを押したときに呼ぶ。
+  // 同じパスなら何もしない（自動の読み直しや「再表示」で描き直さないため）。force は、同じ行をもう一度押したときも描き直すため
+  function syncTopTree(p, opts) {
     if (!topTreeEl || !p) return;
     opts = opts || {};
     if (!opts.force && samePath(p, topTarget)) return;
-    topTarget = p; topTargetDir = !!isDir;
+    topTarget = p;
     if (treeData) drawTopTree();
   }
-  // ツリーを読み直したとき（renderTree から）。まだ何も選んでいなければ、開いているファイルの道筋を出す
+  // ツリーを読み直したとき（renderTree から）。まだ道筋を出していなければ、開いているファイルの道筋を出す
   function refreshTopTree() {
     if (!topTreeEl || !treeData) return;
-    if (!topTarget && currentWin) { topTarget = currentWin; topTargetDir = false; }
+    if (!topTarget && currentWin) topTarget = currentWin;
     drawTopTree();
   }
   if (topTreeEl) {
@@ -2510,7 +2519,7 @@
       if (link) {
         // 道筋の一番下のファイル。道筋は動かさず、本文と下のツリーをそのファイルに合わせる。
         // 先に topTarget を替えるので、下のツリーを合わせても道筋は描き直さない
-        topTarget = link.dataset.win; topTargetDir = false;
+        topTarget = link.dataset.win;
         markTopTarget();
         openFile(link.dataset.win);
         revealInTree(link.dataset.win);
@@ -2518,7 +2527,7 @@
       }
       // 段のフォルダを押すと、下のツリーでそのフォルダまで開く。道筋は動かさない（2026-11-03 本人承認）
       var f = e.target.closest('.tree-folder-name');
-      if (f && f.dataset.path) revealFolderInTree(f.dataset.path, true);
+      if (f && f.dataset.path) revealFolderInTree(f.dataset.path);
     });
     topTreeEl.addEventListener('contextmenu', onTreeContextMenu);
     topTreeEl.addEventListener('mouseover', function (e) {
