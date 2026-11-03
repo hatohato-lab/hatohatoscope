@@ -154,7 +154,7 @@
     font-size: 14px; padding: 4px 12px; cursor: pointer; background: #fff; color: #000;
     border: 1px solid #999; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
   #restoreBtn:hover { background: #e8eefc; }
-  body.maximized .menu, body.maximized .dragbar, body.maximized .url-bar,
+  body.maximized .menu, body.maximized .dragbar, body.maximized .url-bar, body.maximized .bm-bar,
   body.maximized #fileTitle, body.maximized #outlinePane { display: none !important; }
   body.maximized #restoreBtn { display: block; }
   /* 本文側は残りの幅いっぱい。flex-basis:0 にして目次の有無で自動的に幅が決まるようにする */
@@ -224,65 +224,34 @@
   /* 変更のある行に出る差分ボタン（±） */
   .tree-d-btn { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #b45f06; background: #fdf0e0; border: 1px solid #e8c9a0; border-radius: 3px; cursor: pointer; user-select: none; }
   .tree-d-btn:hover { background: #b45f06; color: #fff; border-color: #b45f06; }
-  /* ===== ブックマーク ===== */
-  .bm-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
-  .bm-head { font-size: 12px; color: #555; font-weight: bold; margin-bottom: 4px;
-    display: flex; align-items: center; justify-content: space-between; }
-  #bmExpandBtn { font-size: 11px; padding: 1px 7px; cursor: pointer; font-weight: normal; }
+  /* ===== ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） =====
+     パス欄のすぐ下の1行に、登録した順で「印＋名前」を横に並べる。入りきらない分は右端の » の一覧に回す。
+     前は左のメニューの上に欄があり、ツリーの場所を狭めていた */
+  .bm-bar { position: relative; display: flex; align-items: center; gap: 4px; padding: 2px 6px;
+    background: #fafafa; border-bottom: 1px solid #ccc; }
+  .bm-bar-items { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+  .bm-chip { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; max-width: 11em;
+    padding: 2px 8px; border-radius: 12px; font-size: 14px; color: #1a1a1a; cursor: pointer;
+    white-space: nowrap; user-select: none; }
+  .bm-chip-name { overflow: hidden; text-overflow: ellipsis; }
+  .bm-chip:hover, .bm-more-item:hover { background: #dbe6f3; }
+  /* 入りきらずに » の一覧へ回したもの。帯からは隠す */
+  .bm-chip.bm-over { display: none; }
+  /* 出し入れは layoutBmBar が style.display で行う（CSS で none にすると、'' に戻しても出なくなる） */
+  #bmMoreBtn { flex: 0 0 auto; font-size: 13px; padding: 1px 8px; cursor: pointer; }
+  .bm-more { position: absolute; right: 6px; top: 100%; z-index: 60; min-width: 260px; max-width: 460px;
+    max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid #bbb; border-radius: 4px;
+    box-shadow: 0 4px 10px rgba(0,0,0,.18); padding: 4px 0; }
+  .bm-more-item { display: flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 14px;
+    cursor: pointer; white-space: nowrap; }
+  .bm-more-sweep { border-top: 1px solid #ddd; margin-top: 4px; padding-top: 6px; color: #a3242a; }
+  /* 場所が見つからないブックマーク（消したか、移したもの）。薄くし、名前に取り消し線を引く */
+  .bm-dead { opacity: .55; }
+  .bm-dead .bm-chip-name { text-decoration: line-through; }
   /* 左の絞り込み欄の下に出す「本文を検索」ボタン行 */
   .tree-grep { display: none; padding: 6px 8px; margin: 4px 0; border: 1px solid #bbb; border-radius: 4px;
     cursor: pointer; font-size: 13px; color: #000; background: #f7f7f7; }
   .tree-grep:hover { background: #e8eefc; }
-  /* ブックマーク欄の下端つまみ（ドラッグで高さ変更） */
-  .bm-resize { height: 6px; margin-top: 3px; background: #d5d5d5; border-radius: 3px; cursor: row-resize; }
-  .bm-resize:hover, .bm-resize.dragging { background: #1a4f8a; }
-  /* height（上限ではなく高さそのもの）を指定する。
-     max-height だと中身の量までしか広がらず、ドラッグしても大きくならない（2026-08-28 修正） */
-  .bm-list { height: 210px; overflow-y: auto; overflow-x: hidden; }
-  /* フォルダの入れ子で見せる（2026-09-19 変更。仕事側のビューアと同じ階層の形）。
-     段は入れ子の箱で下げ、ツリー本体と同じ線でつなぐ（2026-09-20。段だけだと散らばって見えたため）。
-     フォルダ行は ▼📁、ファイル行は拡張子アイコン */
-  .bm-children {
-    margin-left: 8px; padding-left: 12px;
-    border-left: 1px solid #c4c4c4;   /* 階層の縦ガイド線。色も形もツリーと同じ */
-  }
-  /* 縦線から各項目へ伸びる横線 */
-  .bm-children > .bm-dir-row,
-  .bm-children > .bm-item { position: relative; }
-  .bm-children > .bm-dir-row::before,
-  .bm-children > .bm-item::before {
-    content: ''; position: absolute; left: -12px; top: 50%;
-    width: 9px; height: 1px; background: #c4c4c4;
-  }
-  /* 行の見た目は下のツリー（エクスプローラ）と同じにする（2026-09-27 本人指示）。
-     .tree-folder-name と同じ値を使う。フォルダの印の ▼📁 だけはブックマーク欄に残す */
-  .bm-dir-row {
-    cursor: pointer; display: flex; align-items: center;
-    padding: 3px 6px; margin: 2px 0;
-    user-select: none; white-space: nowrap;
-    background: #ebedf0; border: 1px solid #dcdfe3; border-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.12);
-    font-weight: 600;
-  }
-  .bm-dir-row:hover { background: #dbe6f3; border-color: #b6cbe4; }
-  .bm-dir-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
-  .bm-item { display: flex; align-items: center; padding: 2px 0 2px 2px;
-    cursor: pointer; text-align: left; white-space: nowrap; }
-  /* ブックマークしたフォルダそのものの行。ツリーのフォルダと同じ「浮いた帯」にする */
-  .bm-item.bm-item-dir {
-    padding: 3px 6px; margin: 2px 0;
-    background: #ebedf0; border: 1px solid #dcdfe3; border-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.12); font-weight: 600;
-  }
-  .bm-item.bm-item-dir:hover { background: #dbe6f3; border-color: #b6cbe4; }
-  .bm-item.bm-item-dir .bm-name { color: inherit; }
-  .bm-item:hover { background: #e8e8e8; }
-
-  /* min-width:0 が無いと、flexの子は中身より縮めず、長い名前が列幅を押し広げて×印がずれる */
-  /* ファイル名はツリーの行とまったく同じ（太字にしない・色も同じ #1a4f8a） */
-  .bm-name { flex: 1 1 auto; min-width: 0; color: #1a4f8a; overflow: hidden; text-overflow: ellipsis; }
-  .bm-del { flex: 0 0 auto; width: 16px; text-align: center; color: #999; border-radius: 3px; }
-  .bm-del:hover { background: #c00; color: #fff; }
   #bmBtn { flex: 0 0 auto; font-size: 14px; padding: 4px 7px; cursor: pointer; }
   #bmBtn.on { background: #f6b93b; border-color: #d89b1c; color: #3a2e00; }
   .tree-bm-star { flex: 0 0 auto; margin-right: 4px; color: #e8a11a; font-size: 12px; }
@@ -293,12 +262,12 @@
   .tree-folder-name.xlink {
     background: #ffe3a0; border-color: #dfae37; box-shadow: 0 0 0 2px #f6b93b;
   }
-  .tree-file.xlink, .bm-item.xlink, .bm-dir-row.xlink {
+  .tree-file.xlink {
     background: #ffe3a0; border-radius: 3px; box-shadow: 0 0 0 2px #f6b93b;
   }
-  /* ツリーの行を押したとき、一番上へ寄せたブックマーク行を2秒だけ光らせる */
-  .bm-dir-row.bm-hit, .bm-item.bm-hit {
-    background: #ffe3a0; border-radius: 3px; box-shadow: 0 0 0 2px #f6b93b;
+  /* 帯のブックマークも同じ色で光らせる。ツリーの行を押したときは、同じパスのものを2秒だけ光らせる */
+  .bm-chip.xlink, .bm-chip.bm-hit {
+    background: #ffe3a0; box-shadow: 0 0 0 2px #f6b93b;
   }
   /* ===== 上のツリー（2026-10-31 本人指示） =====
      ブックマーク欄の場所に、下のツリーと同じ形のツリーをもう1つ置く。行の見た目は下のツリーの指定をそのまま使う */
@@ -356,12 +325,7 @@
         <div class="grep-list" id="grepList"></div>
       </div>
       <div class="tree-grep" id="treeGrep" title="ファイルの中身から探す"></div>
-      <div class="bm-box" id="bmBox" style="display:none;">
-        <div class="bm-head">★ ブックマーク<button id="bmExpandBtn" title="登録してあるフォルダを全部開く／全部畳む">全部開く</button></div>
-        <div class="bm-list" id="bmList"></div>
-        <div class="bm-resize" id="bmResize" title="ドラッグでブックマーク欄の高さを変更"></div>
-      </div>
-      <!-- 上のツリー（2026-10-31 本人指示。ブックマーク欄の場所に置いた、下と同じ形のツリー） -->
+      <!-- 上のツリー（2026-10-31 本人指示。下と同じ形のツリー。ブックマーク欄は 2026-11-03 にパス欄の下の帯へ移した） -->
       <div class="top-box" id="topBox">
         <div class="top-head">選んだ場所の階層<span class="top-up">上にそろえる:<button class="top-up-btn" data-up="1" title="押したものの1つ上のフォルダを、この欄の上の端にそろえる">1つ上</button><button class="top-up-btn" data-up="2" title="押したものの2つ上のフォルダを、この欄の上の端にそろえる">2つ上</button><button class="top-up-btn" data-up="3" title="押したものの3つ上のフォルダを、この欄の上の端にそろえる">3つ上</button><button class="top-up-btn" data-up="4" title="押したものの4つ上のフォルダを、この欄の上の端にそろえる">4つ上</button><button class="top-up-btn" data-up="all" title="作業フォルダの直下のフォルダを、この欄の上の端にそろえる（押したものまでの全部の階層が並ぶ）">一番上</button></span></div>
         <div id="topTree"><div class="loading">読込中...</div></div>
@@ -389,6 +353,12 @@
       <button id="saveBtn" style="display:none;">保存</button>
       <button id="cancelBtn" style="display:none;">キャンセル</button>
       <span id="saveMsg" style="margin-left:8px;font-size:13px;color:#178a3a;"></span>
+    </div>
+    <!-- ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） -->
+    <div class="bm-bar" id="bmBar" style="display:none;">
+      <div class="bm-bar-items" id="bmBarItems"></div>
+      <button id="bmMoreBtn" style="display:none;">»</button>
+      <div class="bm-more" id="bmMore" style="display:none;"></div>
     </div>
     <div class="file-title" id="fileTitle" style="display:none;">
       <div class="file-title-main"><span id="fileTitleDir"></span><span id="fileTitleName"></span></div>
@@ -458,8 +428,10 @@
   var menuEl = document.querySelector('.menu');
   var reloadBtnEl = document.getElementById('reloadBtn');
   var searchInputEl = document.getElementById('searchInput');
-  var bmBoxEl = document.getElementById('bmBox');
-  var bmListEl = document.getElementById('bmList');
+  var bmBarEl = document.getElementById('bmBar');
+  var bmBarItemsEl = document.getElementById('bmBarItems');
+  var bmMoreBtnEl = document.getElementById('bmMoreBtn');
+  var bmMoreEl = document.getElementById('bmMore');
   var topTreeEl = document.getElementById('topTree');   // 上のツリー（2026-10-31 追加）
   var iframe = document.getElementById('viewer');
   var placeholder = document.getElementById('placeholder');
@@ -471,8 +443,8 @@
   var STORAGE = 'allViewerOpenFolders';
   var currentMenuMode = 'left';   // 'left' | 'bottom' | 'popup'（下の表示モードIIFEが設定する）
   // ブックマークは 2026-10-31 に止め、2026-11-01 に戻した（本人指示「やっぱりブックマークがないと分かりづらい」）。
-  // 欄は上のツリー（選んだ場所の階層）の上に出る。止めるときはここを false にする
-  // （欄・上部の★ボタン・右クリックの登録・行頭の c の黄色が消える。登録済みの一覧 api/bookmarks.json は残る）
+  // 2026-11-03 から、パス欄の下の帯に出す（本人指示。前は左のメニューの上の欄）。止めるときはここを false にする
+  // （帯・上部の★ボタン・右クリックの登録・行頭の c の黄色が消える。登録済みの一覧 api/bookmarks.json は残る）
   var BM_ENABLED = true;
 
   function getOpen() { try { return JSON.parse(localStorage.getItem(STORAGE)) || []; } catch (e) { return []; } }
@@ -723,16 +695,16 @@
   }
   // ブックマークに入っているものの名前が変わったら、登録も付け替える（そのままだと開けなくなる）
   function fixBmPath(oldP, newP) {
-    var sep = String.fromCharCode(92), lo = oldP.toLowerCase(), a = getBm(), changed = false;
-    a.forEach(function (b) {
-      var lb = String(b.path).toLowerCase();
-      if (lb === lo || lb.indexOf(lo + sep) === 0) {
-        b.path = newP + b.path.substring(oldP.length);
-        b.name = baseName(b.path);
-        changed = true;
-      }
+    var sep = String.fromCharCode(92), lo = oldP.toLowerCase();
+    function hits(b) { var lb = String(b.path).toLowerCase(); return lb === lo || lb.indexOf(lo + sep) === 0; }
+    if (!getBm().some(hits)) return;
+    changeBm(function (a) {
+      return a.map(function (b) {
+        if (!hits(b)) return b;
+        var path = newP + String(b.path).substring(oldP.length);
+        return { path: path, name: baseName(path), dir: !!b.dir };
+      });
     });
-    if (changed) { setBm(a); renderBookmarks(); markTreeBookmarks(); }
   }
   // 「名前を変える」。同じ場所のまま名前だけ変える（2026-09-27 追加）
   function renamePath(target, isFolder) {
@@ -1329,10 +1301,13 @@
   // 閉じていたフォルダを開いたときに中身を作るのに使う
   var treeData = null;
   var nodeMap = {};
+  // ツリーにあるパスの鍵（bmKey の形）。ブックマークの場所があるかを、サーバーに聞かずに確かめるのに使う（2026-11-03 追加）
+  var treeKeys = {};
   // パス欄から閲覧範囲に足したフォルダ（パスの小文字）。右クリックに「閲覧範囲から外す」を出すのに使う（2026-10-31 追加）
   var addedRoots = {};
   function buildIndex(items) {
     items.forEach(function (it) {
+      treeKeys[bmKey(it.path)] = true;
       if (it.children) {
         flatIndex.push({ name: it.name, path: it.path, dir: true });
         nodeMap[it.path.toLowerCase()] = it;
@@ -1353,6 +1328,7 @@
     if (titlePath && treeRootPath !== prevRoot) layoutFileTitle(titlePath);
     flatIndex = [];
     nodeMap = {};
+    treeKeys = {};
     buildIndex(data.children || []);
     addedRoots = {};
     (data.children || []).forEach(function (it) { if (it.added) addedRoots[it.path.toLowerCase()] = true; });
@@ -1384,8 +1360,9 @@
     if (!revealedNow && currentWin) revealInTree(currentWin, true);   // 選んだ印を付け直すだけなので、上のツリーは動かさない
     // 裏の自動更新では、見ていた位置が飛ばないようスクロールを元に戻す
     if (keepScroll && treeEl && !revealedNow) treeEl.scrollTop = st;
-    // 作業フォルダの最上位が分かってから、ブックマークのパス表示を短縮し直す
+    // ツリーが変わったので、ブックマークの場所があるかを確かめ直して描く
     renderBookmarks();
+    checkBms(true);
     markTreeBookmarks();
     // gitの変更状態で色をつける（非同期・失敗しても表示には影響させない）
     applyGitStatus();
@@ -2068,17 +2045,39 @@
     if (this.dataset.grepq) runGrep(this.dataset.grepq);
   });
 
-  // ===== ブックマーク（よく使うファイル・フォルダを上部に固定して一発で開く） =====
+  // ===== ブックマーク（よく使うファイル・フォルダを、パス欄の下の帯に並べて一発で開く） =====
   // 置き場はファイル（api/bookmarks.json）。ブラウザ内（localStorage）だけだと、ブラウザのデータを
   // 消したときに一緒に消えたため、2026-10-04 にファイルへ移した（本人指示）。
-  // 画面の処理は getBm() を同期で呼ぶので、localStorage は手元の写しとして残し、変えるたびにファイルへも書く。
-  // 起動時はファイルの中身で写しを上書きする（loadBmFile）。
-  // ツリーの全行（2万件超）にボタンを置くと重くなるため、登録は上部の★ボタンで行い、
-  // ツリー側は登録済みの行にだけ★印を後から付ける。
+  // 画面の処理は getBm() を同期で呼ぶので、localStorage は手元の写しとして残す。
+  // 登録と解除は、ファイルの最新の中身に1件ずつ当てて書く（changeBm。2026-11-03 本人指示「消したブックマークが残る」）。
+  // 前は手元の写しを丸ごと書き戻していたので、写しが古い画面で登録や解除をすると、ほかで消したものが戻っていた。
+  // 写しは、起動時と、画面に戻ったときに、ファイルの中身で上書きする（loadBmFile）。
+  // ツリーの全行（2万件超）にボタンを置くと重くなるため、登録は上部の★ボタンと右クリックで行い、
+  // ツリー側は登録済みの行の c を後から黄色にする。
   var BM_KEY = 'allViewerBookmarks';
 
   function getBm() { try { return JSON.parse(localStorage.getItem(BM_KEY)) || []; } catch (e) { return []; } }
-  function setBm(a) { try { localStorage.setItem(BM_KEY, JSON.stringify(a)); } catch (e) {} saveBmFile(a); }
+  function setLocalBm(a) { try { localStorage.setItem(BM_KEY, JSON.stringify(a)); } catch (e) {} }
+  function refreshBmViews() { renderBookmarks(); markTreeBookmarks(); updateBmBtn(); }
+  // 同じ場所かを比べる鍵。大文字と小文字、/ と \ 、末尾の \ の違いをそろえる
+  function bmKey(p) { return String(p || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase(); }
+  // ブックマークを変える。fn は並びを受け取り、変えた並びを返す。同じ変更を、手元の写しとファイルの最新の中身の両方に当てる。
+  // 先に手元の写しで描いて待たせず、ファイルを読んでから同じ変更を当てて書く。ファイルを読めないときは手元の写しを書く
+  function changeBm(fn) {
+    var local = fn(getBm().slice());
+    setLocalBm(local);
+    refreshBmViews();
+    fetch('api/bookmarks?t=' + Date.now())
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var next = (d && d.exists && Array.isArray(d.items)) ? fn(d.items.slice()) : local;
+        setLocalBm(next);
+        saveBmFile(next);
+        refreshBmViews();
+        checkBms();
+      })
+      .catch(function () { saveBmFile(local); });
+  }
   // ファイルへの書き出し。失敗したら上の欄に出す（黙って失うと、また消えたことに気づけない）
   function saveBmFile(a) {
     var body = new URLSearchParams();
@@ -2089,39 +2088,36 @@
       })
       .catch(function () { flashMsg('ブックマークをファイルに保存できませんでした', '#c00'); });
   }
-  // 起動時にファイルから読む。ファイルがまだ無く、ブラウザ側にだけあるときは、それをファイルへ書き出して引き継ぐ
-  // このブラウザで初めて読むときだけは、ブラウザ側にしか無い分をファイルに足す（ファイル化の前に登録した分を失わないため）。
-  // 2回目からはファイルが正で、ブラウザ側の写しはファイルの中身で上書きする
-  var BM_MIGRATED_KEY = 'allViewerBmFileMigrated';
+  // 起動時と、画面に戻ったときにファイルから読み、手元の写しを上書きする。ファイルがまだ無く、手元にだけあるときは書き出す。
+  // 前は、そのブラウザで初めて読むときに、手元にしか無い分をファイルに足していた。古い写しを持つブラウザで開くと
+  // 消したものが戻るため、2026-11-03 にやめた（ファイルに移して1か月たち、手元にしか無い分はもう無い）
   function loadBmFile() {
     fetch('api/bookmarks?t=' + Date.now())
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (!d) return;
-        var migrated = false;
-        try { migrated = localStorage.getItem(BM_MIGRATED_KEY) === '1'; } catch (e) {}
         if (d.exists && Array.isArray(d.items)) {
-          var items = d.items;
-          if (!migrated) {
-            var have = {};
-            items.forEach(function (b) { if (b && b.path) have[String(b.path).toLowerCase()] = true; });
-            var extra = getBm().filter(function (b) { return b && b.path && !have[String(b.path).toLowerCase()]; });
-            if (extra.length) { items = items.concat(extra); saveBmFile(items); }
-          }
-          try { localStorage.setItem(BM_KEY, JSON.stringify(items)); } catch (e) {}
-          renderBookmarks();
-          markTreeBookmarks();
-          updateBmBtn();
+          var s = JSON.stringify(d.items), cur = null;
+          try { cur = localStorage.getItem(BM_KEY); } catch (e) {}
+          if (s !== cur) { setLocalBm(d.items); refreshBmViews(); }
+          checkBms();
         } else if (!d.exists && getBm().length) {
           saveBmFile(getBm());
         }
-        try { localStorage.setItem(BM_MIGRATED_KEY, '1'); } catch (e) {}
       })
       .catch(function () {});
   }
+  // ほかのブラウザで変えた分は、この画面に戻ったときに読み直す。同じブラウザのほかのタブで変えた分は、すぐ描き直す
+  var bmLoadedAt = 0;
+  window.addEventListener('focus', function () {
+    if (Date.now() - bmLoadedAt < 2000) return;
+    bmLoadedAt = Date.now();
+    loadBmFile();
+  });
+  window.addEventListener('storage', function (e) { if (e.key === BM_KEY) refreshBmViews(); });
   function isBm(p) {
-    var lp = (p || '').toLowerCase();
-    return getBm().some(function (b) { return b.path.toLowerCase() === lp; });
+    var k = bmKey(p);
+    return !!k && getBm().some(function (b) { return bmKey(b.path) === k; });
   }
   // 読み込み済みのツリーから、そのパスがフォルダかどうかを調べる
   function isDirPath(p) {
@@ -2131,20 +2127,24 @@
     }
     return false;
   }
+  // 登録してあれば外し、無ければ足す。どちらにするかは押した時点の手元の写しで決め、ファイルの最新の中身に当てる
   function toggleBm(p) {
     if (!p) return;
-    var lp = p.toLowerCase();
-    var a = getBm();
-    var hit = a.filter(function (b) { return b.path.toLowerCase() === lp; });
-    if (hit.length) {
-      a = a.filter(function (b) { return b.path.toLowerCase() !== lp; });
-    } else {
-      a.push({ path: p, name: baseName(p), dir: isDirPath(p) });
+    var k = bmKey(p);
+    if (isBm(p)) {
+      changeBm(function (a) { return a.filter(function (b) { return bmKey(b.path) !== k; }); });
+      return;
     }
-    setBm(a);
-    renderBookmarks();
-    markTreeBookmarks();
-    updateBmBtn();
+    var item = { path: p, name: baseName(p), dir: isDirPath(p) };
+    changeBm(function (a) {
+      return a.some(function (b) { return bmKey(b.path) === k; }) ? a : a.concat([item]);
+    });
+  }
+  // まとめて外す（場所が見つからないものの片づけ）
+  function removeBms(paths) {
+    var ks = {};
+    paths.forEach(function (p) { ks[bmKey(p)] = true; });
+    changeBm(function (a) { return a.filter(function (b) { return !ks[bmKey(b.path)]; }); });
   }
   function updateBmBtn() {
     var btn = document.getElementById('bmBtn');
@@ -2166,106 +2166,123 @@
     if (dl.indexOf(rl + '\\') === 0) return d.substring(root.length + 1);
     return d;   // 作業フォルダの外（.claude 等）は、そのまま出す
   }
-  // どの段を開いているかを覚える（2026-09-27 追加。ツリーの開閉の記憶と同じ作り）
-  var BM_OPEN_KEY = 'allViewerBmOpen';
-  function getBmOpen() { try { return JSON.parse(localStorage.getItem(BM_OPEN_KEY)) || []; } catch (e) { return []; } }
-  function setBmOpen(a) { try { localStorage.setItem(BM_OPEN_KEY, JSON.stringify(a)); } catch (e) {} }
-  function bmIsOpen(p) { return getBmOpen().indexOf(p) >= 0; }
-  function bmSetOpen(p, on) {
-    var a = getBmOpen(), i = a.indexOf(p);
-    if (on && i < 0) a.push(p);
-    if (!on && i >= 0) a.splice(i, 1);
-    setBmOpen(a);
-  }
-  // 「全部開く」「全部畳む」（2026-09-27 本人指示。まとめて見たいときのため）
-  function bmDirRows() { return Array.prototype.slice.call(bmListEl.querySelectorAll('.bm-dir-row')); }
-  function bmSetAll(on) {
-    var rows = bmDirRows();
-    rows.forEach(function (r) {
-      r.dataset.open = on ? 'true' : 'false';
-      var box = r.nextElementSibling;
-      if (box && box.classList.contains('bm-children')) box.style.display = on ? 'block' : 'none';
-    });
-    setBmOpen(on ? rows.map(function (r) { return r.dataset.path; }) : []);
-    updateBmExpandBtn();
-  }
-  function updateBmExpandBtn() {
-    var btn = document.getElementById('bmExpandBtn');
-    if (!btn) return;
-    var rows = bmDirRows();
-    btn.style.display = rows.length ? '' : 'none';
-    var closed = rows.filter(function (r) { return r.dataset.open !== 'true'; }).length;
-    btn.textContent = closed ? '全部開く' : '全部畳む';
-  }
-  function bmToggleRow(row) {
-    var on = row.dataset.open !== 'true';
-    row.dataset.open = on ? 'true' : 'false';
-    var box = row.nextElementSibling;
-    if (box && box.classList.contains('bm-children')) box.style.display = on ? 'block' : 'none';
-    bmSetOpen(row.dataset.path, on);
-    updateBmExpandBtn();
-    // 開閉と同時に、ツリーでも同じフォルダを開いて見せる（2026-09-27 戻した連動）
-    if (row.dataset.path) revealFolderInTree(row.dataset.path);
-  }
+  // ===== ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） =====
+  // 登録した順に「印＋名前」を横に並べる。入りきらない分は右端の » の一覧に回す。
+  // 前は左のメニューの上の欄に、フォルダの入れ子で出していた（2026-09-19〜2026-11-03）
 
+  // 帯の1件の印。フォルダは📁、ファイルは .md が📝、.html が🌐、ほかは📄（Chrome の帯のサイトの印の代わり）
+  function bmIconOf(b) {
+    if (b.dir) return '📁';
+    var x = extOf(String(b.name || baseName(String(b.path))));
+    return x === '.md' ? '📝' : ((x === '.html' || x === '.htm') ? '🌐' : '📄');
+  }
+  // 場所が見つからないブックマーク（消したか、移したもの）を確かめる（2026-11-03 本人指示）。
+  // ツリーにあれば「ある」。ツリーに無いもの（深すぎる場所、除外したフォルダ、消したもの）だけサーバーに聞く。
+  // ファイルは api/stat で聞く（中身を読まない）。そこで見つからなければ serve に聞き、「not a file」ならフォルダとしてある。
+  // 閲覧範囲の外などで確かめられないものは、無いとは言わない。結果は1分だけ覚える
+  var bmGone = {};       // 鍵 → true（無い）／false（ある）
+  var bmCheckedAt = {};  // 鍵 → 確かめた時刻
+  function checkBmPath(p) {
+    var k = bmKey(p), q = encodeURIComponent(p) + '&t=' + Date.now();
+    if (treeKeys[k]) { bmCheckedAt[k] = Date.now(); bmGone[k] = false; return Promise.resolve(false); }
+    return fetch('api/stat?p=' + q)
+      .then(function (r) {
+        if (r.ok) return false;
+        if (r.status !== 404) return null;
+        return fetch('serve?p=' + q).then(function (r2) {
+          return r2.text().then(function (t) { return r2.status !== 404 ? null : (t === 'not found'); });
+        });
+      })
+      .catch(function () { return null; })
+      .then(function (gone) {
+        bmCheckedAt[k] = Date.now();
+        if (gone === null) delete bmGone[k]; else bmGone[k] = gone;
+        return gone;
+      });
+  }
+  // force でないときは、1分以内に確かめたものを聞き直さない。変わったときだけ帯を描き直す。
+  // ツリーを読む前は確かめない（全部をサーバーに聞くことになるため）。ツリーを描いたときに renderTree から呼ぶ
+  function checkBms(force) {
+    if (!treeData) return Promise.resolve();
+    var now = Date.now();
+    var list = getBm().filter(function (b) {
+      var k = bmKey(b.path);
+      return force || !bmCheckedAt[k] || now - bmCheckedAt[k] > 60000;
+    });
+    if (!list.length) return Promise.resolve();
+    var before = JSON.stringify(bmGone);
+    return Promise.all(list.map(function (b) { return checkBmPath(b.path); })).then(function () {
+      if (JSON.stringify(bmGone) !== before) renderBookmarks();
+    });
+  }
+  function bmIsGone(b) { return bmGone[bmKey(b.path)] === true; }
+
+  var bmGoneCount = 0;
   function renderBookmarks() {
     var a = getBm();
-    if (!BM_ENABLED || !a.length) { bmBoxEl.style.display = 'none'; bmListEl.innerHTML = ''; return; }
-    // フォルダの入れ子で見せる（2026-09-19 変更。仕事側のビューアと同じ階層の形）。
-    // 段はパス（作業フォルダ以降）の区切りで作る。作業フォルダの外は絶対パスのまま段にする。
-    var SEP = String.fromCharCode(92);   // 区切りは \ 。転送でエスケープが潰れるため文字コードで書く
-    var root = { dirs: {}, files: [], path: '' };
-    a.forEach(function (b) {
-      var rel = bmRelDir(b.path);
-      var segs = (rel === '（作業フォルダの直下）') ? []
-        : rel.split(SEP).filter(function (t) { return t; });
-      // 階層行（📁）を押したときにツリーへ飛べるよう、各段のフォルダの絶対パスを持たせる
-      // （dirName(b.path) の末尾 segs.length 個が階層行に対応する）
-      var allSegs = dirName(b.path).split(SEP);
-      var offset = allSegs.length - segs.length;
-      var node = root;
-      segs.forEach(function (t, i) {
-        if (!node.dirs[t]) node.dirs[t] = { dirs: {}, files: [], path: allSegs.slice(0, offset + i + 1).join(SEP) };
-        node = node.dirs[t];
-      });
-      node.files.push(b);
-    });
-    // 段は入れ子の箱（.bm-children）で作る。CSSの縦線・横線がそのまま階層の線になる
-    function renderNode(node) {
-      var html = '';
-      Object.keys(node.dirs).sort(function (x, y) { return x.localeCompare(y, 'ja'); })
-        .forEach(function (name) {
-          var child = node.dirs[name];
-          var inner = renderNode(child);
-          // 行の中身は名前だけにする（2026-09-27 本人指示。▼ と 📁 は無くても階層は線で分かる）
-          var isOpen = bmIsOpen(child.path);
-          html += '<div class="bm-dir-row" data-path="' + esc(child.path) + '" data-open="' + isOpen + '">'
-            + '<span class="tree-c-copy" data-path="' + esc(child.path) + '" title="パスをコピー">c</span>'
-            + '<span class="bm-dir-name">' + esc(name) + '</span></div>'
-            + (inner ? '<div class="bm-children"' + (isOpen ? '' : ' style="display:none;"') + '>' + inner + '</div>' : '');
-        });
-      node.files.slice().sort(function (x, y) {
-        return String(x.name).localeCompare(String(y.name), 'ja');
-      }).forEach(function (b) {
-        // アイコンはツリーと同じ決まりにする（2026-09-27 本人指示）。
-        // フォルダは印を出さず帯にする。ファイルは .md と .html だけアイコンを出す。
-        // 場所は空でも空けておく（幅18pxを保たないと、行ごとに名前の始まりがずれる）
-        var bIsDir = !!b.dir, bExt = extOf(b.name);
-        var bIcon = bIsDir ? '' : (bExt === '.md' ? '📝' : (bExt === '.html' || bExt === '.htm' ? '🌐' : ''));
-        html += '<div class="bm-item' + (bIsDir ? ' bm-item-dir' : '') + '" data-path="' + esc(b.path) + '">'
-          + '<span class="tree-c-copy" data-path="' + esc(b.path) + '" title="パスをコピー">c</span>'
-          + (bIcon ? '<span class="tree-f-icon">' + bIcon + '</span>' : '')   // 空の枠を置かない（間が空いて見えるため）
-          + '<span class="bm-name">' + esc(b.name) + '</span>'
-          + '<span class="bm-del" title="ブックマークから外す">×</span>'
-          + '</div>';
-      });
-      return html;
+    if (!BM_ENABLED || !a.length) {
+      bmBarEl.style.display = 'none'; bmBarItemsEl.innerHTML = ''; bmGoneCount = 0; closeBmMore();
+      return;
     }
-    // 一番上の段も .bm-children で包む（2026-09-21 本人指示）。包まないと、その段だけ
-    // 枝線（横の短い線）が付かず、同じフォルダの行なのに線の有無がばらついて見える
-    bmListEl.innerHTML = '<div class="bm-children">' + renderNode(root) + '</div>';
-    bmBoxEl.style.display = 'block';
-    updateBmExpandBtn();
+    var html = '', gone = 0;
+    a.forEach(function (b) {
+      var isGone = bmIsGone(b);
+      if (isGone) gone++;
+      html += '<span class="bm-chip' + (isGone ? ' bm-dead' : '') + '" data-path="' + esc(String(b.path)) + '">'
+        + '<span class="bm-chip-icon">' + bmIconOf(b) + '</span>'
+        + '<span class="bm-chip-name">' + esc(String(b.name || baseName(String(b.path)))) + '</span></span>';
+    });
+    bmGoneCount = gone;
+    bmBarItemsEl.innerHTML = html;
+    bmBarEl.style.display = '';
+    closeBmMore();
+    layoutBmBar();
+  }
+  // 帯に入りきらないものを、右端の » の一覧へ回す（Chrome と同じ）。幅が変わるたびに測り直す。
+  // 場所が見つからないものがあるときは、まとめて外す入口として » を出しておく
+  function layoutBmBar() {
+    if (!bmBarEl || bmBarEl.style.display === 'none') return;
+    var chips = Array.prototype.slice.call(bmBarItemsEl.querySelectorAll('.bm-chip'));
+    chips.forEach(function (c) { c.classList.remove('bm-over'); });
+    bmMoreBtnEl.style.display = 'none';
+    var edge = function () { return bmBarItemsEl.getBoundingClientRect().right + 0.5; };
+    var over = chips.length && chips[chips.length - 1].getBoundingClientRect().right > edge();
+    if (!over && !bmGoneCount) return;
+    bmMoreBtnEl.style.display = '';   // ボタンの分だけ帯が縮むので、出してから測る
+    var right = edge(), n = 0;
+    chips.forEach(function (c) {
+      if (n || c.getBoundingClientRect().right > right) { c.classList.add('bm-over'); n++; }
+    });
+    bmMoreBtnEl.textContent = n ? '» ' + n : '»';
+    bmMoreBtnEl.title = [n ? '帯に入りきらないブックマーク（' + n + '件）' : '',
+      bmGoneCount ? '場所が見つからないブックマーク（' + bmGoneCount + '件）' : ''].filter(Boolean).join('／');
+  }
+  if (window.ResizeObserver) new ResizeObserver(function () { layoutBmBar(); }).observe(bmBarEl);
+  function closeBmMore() { if (bmMoreEl) bmMoreEl.style.display = 'none'; }
+  function openBmMore() {
+    var html = '';
+    bmBarItemsEl.querySelectorAll('.bm-chip.bm-over').forEach(function (c) {
+      html += '<div class="bm-more-item' + (c.classList.contains('bm-dead') ? ' bm-dead' : '') + '" data-path="'
+        + esc(c.dataset.path) + '">' + c.innerHTML + '</div>';
+    });
+    if (bmGoneCount) {
+      html += '<div class="bm-more-item bm-more-sweep" data-sweep="1">🧹 場所が見つからないブックマークをまとめて外す（'
+        + bmGoneCount + '件）</div>';
+    }
+    if (!html) return;
+    bmMoreEl.innerHTML = html;
+    bmMoreEl.style.display = 'block';
+  }
+  // 場所が見つからないブックマークを、まとめて外す。ツリーを読み直してから全部を確かめ直し、外すものの名前を見せて確かめてから外す
+  function sweepGoneBms() {
+    refreshTree(function () { checkBms(true).then(function () {
+      var gone = getBm().filter(bmIsGone);
+      if (!gone.length) { flashMsg('場所が見つからないブックマークはありません'); return; }
+      var names = gone.map(function (b) { return '・' + (b.name || baseName(String(b.path))); }).join('\n');
+      if (!window.confirm('次の ' + gone.length + ' 件は、場所が見つかりません（消したか、移したようです）。\nブックマークから外しますか？\n\n' + names)) return;
+      removeBms(gone.map(function (b) { return b.path; }));
+      flashMsg('場所が見つからないブックマークを ' + gone.length + ' 件外しました');
+    }); });
   }
   // 登録済みの行にだけ★印を付ける（件数が少ないので総なめしない）
   function bmSelector(p) {
@@ -2285,8 +2302,8 @@
   }
   // 登録時に保存した dir 印も見る（ツリー読込前に押されると isDirPath が false になり、ファイル扱いで失敗するため）
   function isBmDir(p) {
-    var lp = p.toLowerCase();
-    return getBm().some(function (b) { return b.path.toLowerCase() === lp && !!b.dir; });
+    var k = bmKey(p);
+    return getBm().some(function (b) { return bmKey(b.path) === k && !!b.dir; });
   }
   function openBookmark(p) {
     if (isDirPath(p) || isBmDir(p)) {
@@ -2311,50 +2328,47 @@
     }
     toggleBm(p);
   });
-  // ブックマーク欄の階層行（📁）を押したら、ツリーでそのフォルダを展開して一番上に出す（2026-09-19 追加）
-  function revealBmFolder(p) {
-    urlInput.value = p;
-    updateClearBtn();
-    updateBmBtn();
-    if (revealFolderInTree(p)) return;
-    // ツリーに無い＝作りたてなら再スキャンして出す。作業フォルダの外（C: など）は何もしない
-    var root = (treeRootPath || '').toLowerCase();
-    if (root && p.toLowerCase().indexOf(root) === 0) refreshTree(function () { revealFolderInTree(p); });
-  }
-  bmListEl.addEventListener('click', function (e) {
-    var copy = e.target.closest('.tree-c-copy');
-    if (copy) { e.stopPropagation(); runCopyBtn(copy); return; }   // 行頭の c（ツリーと同じ）
-    var del = e.target.closest('.bm-del');
-    if (del) {
-      var row = del.closest('.bm-item');
-      if (row) toggleBm(row.dataset.path);
+  // 帯と » の一覧を押したとき。場所が見つからないものは開かずに知らせる
+  bmBarEl.addEventListener('click', function (e) {
+    if (e.target.closest('[data-sweep]')) { closeBmMore(); sweepGoneBms(); return; }
+    var el = e.target.closest('.bm-chip, .bm-more-item');
+    if (!el || !el.dataset.path) return;
+    closeBmMore();
+    if (el.classList.contains('bm-dead')) {
+      flashMsg('場所が見つかりません（消したか、移したようです）。右クリックで外せます: ' + baseName(el.dataset.path), '#c00');
       return;
     }
-    var dirRow = e.target.closest('.bm-dir-row');
-    if (dirRow && dirRow.dataset.path) { bmToggleRow(dirRow); return; }   // ツリーと同じく開閉
-    var item = e.target.closest('.bm-item');
-    if (item) openBookmark(item.dataset.path);
+    openBookmark(el.dataset.path);
   });
-  // 右クリックのメニュー。押す動きを開閉にした分、ツリーへ飛ぶ道をここに置く（2026-09-27）
-  bmListEl.addEventListener('contextmenu', function (e) {
-    var row = e.target.closest ? e.target.closest('.bm-dir-row, .bm-item') : null;
-    if (!row || !row.dataset.path) return;
+  // 右クリックのメニュー。外す、パスのコピー、場所が見つからないものをまとめて外す
+  bmBarEl.addEventListener('contextmenu', function (e) {
+    var el = e.target.closest ? e.target.closest('.bm-chip, .bm-more-item') : null;
+    if (!el || !el.dataset.path) return;
     e.preventDefault();
-    var p = row.dataset.path;
-    var items = [{ label: '🔎 ツリーでこの場所を開く', run: function () { revealBmFolder(p); } }];
-    if (row.classList.contains('bm-item')) {
-      items.push({ label: '★ ブックマークから外す', run: function () {
+    var p = el.dataset.path;
+    var items = [
+      { label: '★ ブックマークから外す：' + baseName(p), run: function () {
         toggleBm(p); flashMsg('★ ブックマークから外しました: ' + baseName(p));
-      } });
+      } },
+      { label: '📋 パスをコピー', run: function () {
+        copyText(p).then(function () { flashMsg('パスをコピーしました: ' + baseName(p)); }, function () {});
+      } }
+    ];
+    if (bmGoneCount) {
+      items.push({ label: '🧹 場所が見つからないブックマークをまとめて外す（' + bmGoneCount + '件）', run: sweepGoneBms });
     }
-    showCtxMenu(row.ownerDocument, e.clientX, e.clientY, items);
+    closeBmMore();
+    showCtxMenu(document, e.clientX, e.clientY, items);
   });
-  (function () {
-    var btn = document.getElementById('bmExpandBtn');
-    if (btn) btn.addEventListener('click', function () {
-      bmSetAll(bmDirRows().some(function (r) { return r.dataset.open !== 'true'; }));
-    });
-  })();
+  bmMoreBtnEl.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (bmMoreEl.style.display === 'block') closeBmMore(); else openBmMore();
+  });
+  // 一覧の外を押したとき、Esc を押したときは閉じる
+  document.addEventListener('mousedown', function (e) {
+    if (bmMoreEl.style.display === 'block' && !bmMoreEl.contains(e.target) && !bmMoreBtnEl.contains(e.target)) closeBmMore();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeBmMore(); });
   urlInput.addEventListener('input', updateBmBtn);
 
   // ===== ツリーとブックマーク欄の対応を知らせる（2026-09-21 本人指示） =====
@@ -2377,13 +2391,14 @@
   }
   function bmHoverPath(t) {
     if (!t || !t.closest) return '';
-    var r = t.closest('.bm-dir-row, .bm-item');
+    var r = t.closest('.bm-chip');
     return r ? (r.dataset.path || '') : '';
   }
-  // ブックマーク欄は件数が少ないので総なめしてよい。ツリーは数万行あるので属性セレクタで1回だけ引く
+  // 帯は件数が少ないので総なめしてよい。ツリーは数万行あるので属性セレクタで1回だけ引く。
+  // » の一覧に回したものは、光らせても見えないので返さない
   function bmRowsFor(key) {
     var out = [];
-    bmListEl.querySelectorAll('.bm-dir-row, .bm-item').forEach(function (el) {
+    bmBarItemsEl.querySelectorAll('.bm-chip:not(.bm-over)').forEach(function (el) {
       if (pathKey(el.dataset.path) === key) out.push(el);
     });
     return out;
@@ -2396,19 +2411,6 @@
     var row = c && c.closest('.tree-file');
     return row ? [row] : [];
   }
-  // 畳んである段の中の行は光っても見えない。その場合は、見えている親フォルダの行を代わりに光らせる
-  function bmVisibleTarget(el) {
-    if (el.offsetParent !== null) return el;
-    var box = el.parentElement;
-    while (box && box !== bmListEl) {
-      if (box.classList.contains('bm-children')) {
-        var head = box.previousElementSibling;
-        if (head && head.classList.contains('bm-dir-row') && head.offsetParent !== null) return head;
-      }
-      box = box.parentElement;
-    }
-    return null;
-  }
   function setXlink(path, from) {
     var key = pathKey(path);
     // どちらの欄から乗せたかも鍵に入れる。入れないと、ツリー→ブックマークへマウスを移したときに光る側が入れ替わらない
@@ -2416,33 +2418,19 @@
     if (mark === xlinkKey) return;
     clearXlink();
     if (!key) return;
-    var els = (from === 'tree') ? bmRowsFor(key).map(bmVisibleTarget).filter(Boolean) : treeRowsFor(path);
+    var els = (from === 'tree') ? bmRowsFor(key) : treeRowsFor(path);
     for (var i = 0; i < els.length; i++) els[i].classList.add('xlink');
     xlinkEls = els; xlinkKey = mark;
   }
-  // ツリーの行を押したとき、同じパスのブックマーク行を枠の一番上へ寄せて光らせる（2026-09-22 本人指示）。
-  // ブックマークに無い行を押したときは動かさない（今見ている位置を見失うため）
+  // ツリーの行を押したとき、同じパスのブックマークを帯の上で2秒だけ光らせる（2026-09-22 本人指示。2026-11-03 帯に移した）。
+  // ブックマークに無い行と、» の一覧に回したものは光らせない
   var bmHitEl = null, bmHitTimer = 0;
   function revealBmRow(p) {
     var key = pathKey(p);
-    if (!BM_ENABLED || !key || !bmListEl) return false;
+    if (!BM_ENABLED || !key || !bmBarItemsEl) return false;
     var els = bmRowsFor(key);
     if (!els.length) return false;
     var el = els[0];
-    // 畳んである段の中にある行は、先にその段を開いてから寄せる（2026-09-27 開閉を付けたため）
-    var box = el.parentElement;
-    while (box && box !== bmListEl) {
-      if (box.classList.contains('bm-children') && box.style.display === 'none') {
-        box.style.display = 'block';
-        var head = box.previousElementSibling;
-        if (head && head.classList.contains('bm-dir-row')) {
-          head.dataset.open = 'true';
-          bmSetOpen(head.dataset.path, true);
-        }
-      }
-      box = box.parentElement;
-    }
-    bmListEl.scrollTop += el.getBoundingClientRect().top - bmListEl.getBoundingClientRect().top;
     if (bmHitEl) bmHitEl.classList.remove('bm-hit');
     el.classList.add('bm-hit'); bmHitEl = el;
     clearTimeout(bmHitTimer);
@@ -2454,8 +2442,8 @@
   }
   treeEl.addEventListener('mouseover', function (e) { setXlink(treeHoverPath(e.target), 'tree'); });
   treeEl.addEventListener('mouseleave', clearXlink);
-  bmListEl.addEventListener('mouseover', function (e) { setXlink(bmHoverPath(e.target), 'bm'); });
-  bmListEl.addEventListener('mouseleave', clearXlink);
+  bmBarItemsEl.addEventListener('mouseover', function (e) { setXlink(bmHoverPath(e.target), 'bm'); });
+  bmBarItemsEl.addEventListener('mouseleave', clearXlink);
 
   renderBookmarks();
   loadBmFile();   // ファイルの中身で描き直す（ブラウザのデータを消しても戻るように）
@@ -2497,7 +2485,6 @@
       e.preventDefault();
     });
   }
-  attachHeightGrip(bmListEl, document.getElementById('bmResize'), 'allViewerBmHeight', 210);
 
   // ===== 上のツリー（2026-10-31 本人指示。ブックマーク欄の場所に置いた、下と同じ形のツリー） =====
   // 下のツリーで押したファイルやフォルダまでの道筋だけを開き、押したものの1つ上から4つ上のどれか、または一番上（作業フォルダの直下）のフォルダを上の端にそろえる。
@@ -3236,7 +3223,7 @@
   var tipRow = null;
   function tipRowOf(t) {
     if (!t || !t.closest) return null;
-    return t.closest('.tree-file, .tree-folder-name, .bm-item, .bm-dir-row');
+    return t.closest('.tree-file, .tree-folder-name, .bm-chip, .bm-more-item');
   }
   function tipTextOf(row) {
     // 行の頭の c（パスのコピー）が絶対パスを持っている。無い行は行そのものの data-path、それも無ければ名前
