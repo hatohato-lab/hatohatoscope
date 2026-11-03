@@ -363,7 +363,7 @@
       </div>
       <!-- 上のツリー（2026-10-31 本人指示。ブックマーク欄の場所に置いた、下と同じ形のツリー） -->
       <div class="top-box" id="topBox">
-        <div class="top-head">選んだ場所の階層<span class="top-up">上にそろえる:<button class="top-up-btn" data-up="1" title="押したものの1つ上のフォルダを、この欄の上の端にそろえる">1つ上</button><button class="top-up-btn" data-up="2" title="押したものの2つ上のフォルダを、この欄の上の端にそろえる">2つ上</button><button class="top-up-btn" data-up="all" title="作業フォルダの直下のフォルダを、この欄の上の端にそろえる（押したものまでの全部の階層が並ぶ）">一番上</button></span></div>
+        <div class="top-head">選んだ場所の階層<span class="top-up">上にそろえる:<button class="top-up-btn" data-up="1" title="押したものの1つ上のフォルダを、この欄の上の端にそろえる">1つ上</button><button class="top-up-btn" data-up="2" title="押したものの2つ上のフォルダを、この欄の上の端にそろえる">2つ上</button><button class="top-up-btn" data-up="3" title="押したものの3つ上のフォルダを、この欄の上の端にそろえる">3つ上</button><button class="top-up-btn" data-up="4" title="押したものの4つ上のフォルダを、この欄の上の端にそろえる">4つ上</button><button class="top-up-btn" data-up="all" title="作業フォルダの直下のフォルダを、この欄の上の端にそろえる（押したものまでの全部の階層が並ぶ）">一番上</button></span></div>
         <div id="topTree"><div class="loading">読込中...</div></div>
         <div class="top-resize" id="topResize" title="ドラッグで上のツリーの高さを変更"></div>
       </div>
@@ -2500,14 +2500,18 @@
   attachHeightGrip(bmListEl, document.getElementById('bmResize'), 'allViewerBmHeight', 210);
 
   // ===== 上のツリー（2026-10-31 本人指示。ブックマーク欄の場所に置いた、下と同じ形のツリー） =====
-  // 下のツリーで押したファイルやフォルダまでの道筋だけを開き、押したものの1つ上か2つ上、または一番上（作業フォルダの直下）のフォルダを上の端にそろえる。
+  // 下のツリーで押したファイルやフォルダまでの道筋だけを開き、押したものの1つ上から4つ上のどれか、または一番上（作業フォルダの直下）のフォルダを上の端にそろえる。
   // 道筋のほかのフォルダは閉じておき、階層だけが見えるようにする。本文のリンクや「戻る」で下のツリーが動いたときも合わせる。
   // 上のツリーで押したときは上は動かさず、本文と下のツリーをそのファイルに合わせる。
   // 全部の行を作ると下のツリー（数万行）と合わせて倍の重さになるので、開いているフォルダの中だけを作る
   var TOP_UP_KEY = 'allViewerTopUp';
-  // 上の端にそろえるのは、押したものの何階層上か。記憶する値は '1'、'2'、'all'。
-  // 'all'（一番上）は数の上限を外すだけで、topHeads が作業フォルダの直下の行で止まる
-  function topUpOf(v) { return v === 'all' ? Infinity : (v === '1' ? 1 : 2); }
+  // 上の端にそろえるのは、押したものの何階層上か。記憶する値は '1'〜'4' と 'all'（3と4は 2026-11-03 本人指示で足した）。
+  // 'all'（一番上）は数の上限を外すだけで、topHeads が作業フォルダの直下の行で止まる。知らない値は 2 にする
+  function topUpOf(v) {
+    if (v === 'all') return Infinity;
+    var n = parseInt(v, 10);
+    return (n >= 1 && n <= 4) ? n : 2;
+  }
   var topUp = 2;
   try { topUp = topUpOf(localStorage.getItem(TOP_UP_KEY)); } catch (e) {}
   var topTarget = '';          // 上のツリーで選んでいる行のパス
@@ -2718,7 +2722,7 @@
     });
     topTreeEl.addEventListener('mouseleave', function () { topHoverRow = null; updateTopGuide(); });
   }
-  // 「1つ上」「2つ上」「一番上」の切り替え。押したら、いま選んでいる行で道筋を開き直してそろえる
+  // 「1つ上」から「4つ上」と「一番上」の切り替え。押したら、いま選んでいる行で道筋を開き直してそろえる
   var topUpBtns = Array.prototype.slice.call(document.querySelectorAll('.top-up-btn'));
   function updateTopUpBtns() {
     topUpBtns.forEach(function (b) { b.classList.toggle('active', topUpOf(b.dataset.up) === topUp); });
