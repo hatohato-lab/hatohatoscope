@@ -2288,7 +2288,8 @@
     bmListEl.innerHTML = '';
     bmBarItemsEl.querySelectorAll('.bm-chip.open').forEach(function (c) { c.classList.remove('open'); });
   }
-  // i 番目のボタンの一覧を、ボタンのすぐ下に開く。右にはみ出すときは左へ寄せ、下にはみ出す分は一覧の中で送る
+  // i 番目のボタンの一覧を、帯の下端から開く（ボタンのすぐ下だと、一覧が下の行のボタンに重なって押せなかった。2026-11-04 本人承認）。
+  // 横はボタンの左にそろえ、右にはみ出すときは左へ寄せる。下にはみ出す分は一覧の中で送る
   function openBmList(i) {
     closeBmList();
     var g = bmGroups[i], chip = bmBarItemsEl.querySelector('.bm-chip[data-group="' + i + '"]');
@@ -2299,8 +2300,8 @@
     bmListEl.style.display = 'block';
     bmListEl.style.left = '0px';
     var bar = bmBarEl.getBoundingClientRect(), c = chip.getBoundingClientRect();
-    bmListEl.style.top = (c.bottom - bar.top + 2) + 'px';
-    bmListEl.style.maxHeight = Math.max(120, window.innerHeight - c.bottom - 12) + 'px';
+    bmListEl.style.top = (bar.height + 2) + 'px';
+    bmListEl.style.maxHeight = Math.max(120, window.innerHeight - bar.bottom - 12) + 'px';
     bmListEl.style.left = Math.max(4, Math.min(c.left - bar.left, bar.width - bmListEl.offsetWidth - 4)) + 'px';
   }
   // 場所が見つからないブックマーク（消したか、移したもの）を確かめる（2026-11-03 本人指示）。
