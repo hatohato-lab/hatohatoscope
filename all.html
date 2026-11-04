@@ -144,6 +144,14 @@
   #fileTitleDir a.dir-link:hover { background: #e8eefc; }
   /* 本文と目次を横に並べる箱（2026-09-19 変更。目次を重ねずに左へ置くため flex にした） */
   .viewer-area { flex: 1; position: relative; display: flex; min-height: 0; min-width: 0; }
+  /* 本文の中を探す欄（2026-11-04 本人指示）。本文の右上に重ねる。本文のスクロールバーを隠さないよう、右を少し空ける */
+  #findBar { position: absolute; top: 6px; right: 24px; z-index: 45; display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px; background: #fff; border: 1px solid #999; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  #findInput { width: 260px; font-size: 14px; padding: 3px 5px; }
+  #findCount { min-width: 4em; font-size: 14px; text-align: center; font-variant-numeric: tabular-nums; }
+  #findCount.none { color: #c00; font-weight: bold; }
+  #findClose { cursor: pointer; padding: 0 5px; font-size: 16px; border-radius: 3px; }
+  #findClose:hover { background: #c00; color: #fff; }
   /* 目次ペイン（開いたMarkdown/HTMLの見出し一覧）。order:-1 で本文より左に出す。
      重ねないので本文は残りの幅に収まる（DOMの位置は動かしていない） */
   #outlinePane { order: -1; flex: 0 0 240px; overflow: auto;
@@ -232,20 +240,29 @@
   /* 変更のある行に出る差分ボタン（±） */
   .tree-d-btn { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #b45f06; background: #fdf0e0; border: 1px solid #e8c9a0; border-radius: 3px; cursor: pointer; user-select: none; }
   .tree-d-btn:hover { background: #b45f06; color: #fff; border-color: #b45f06; }
-  /* ===== ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） =====
-     パス欄のすぐ下に、登録した順で「印＋名前」を横に並べ、帯の中で折り返して全部を出す
-     （本人指示「全部詰め込んで表示する。箱の中に」。はじめは1行にして、入りきらない分を右端の » の一覧に回していた）。
+  /* ===== ブックマークの帯（2026-11-03 本人指示。2026-11-04 本人指示でフォルダごとのボタンと一覧にした） =====
+     パス欄のすぐ下に、ブックマークが入っている3段目のフォルダごとのボタンを並べ、帯の中で折り返して全部を出す。
+     押すと一覧が開き、その中のブックマークを、ファイル名の帯の場所の階段と同じ形で、名前を切らずに全部出す。
      前は左のメニューの上に欄があり、ツリーの場所を狭めていた */
-  .bm-bar { display: flex; padding: 2px 6px; background: #fafafa; border-bottom: 1px solid #ccc; }
+  .bm-bar { position: relative; display: flex; padding: 2px 6px; background: #fafafa; border-bottom: 1px solid #ccc; }
   .bm-bar-items { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
   .bm-chip { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; max-width: 11em;
     padding: 2px 8px; border-radius: 12px; font-size: 14px; color: #1a1a1a; cursor: pointer;
     white-space: nowrap; user-select: none; }
   .bm-chip-name { overflow: hidden; text-overflow: ellipsis; }
-  .bm-chip:hover { background: #dbe6f3; }
+  .bm-chip:hover, .bm-chip.open { background: #dbe6f3; }
+  /* ボタンを押すと開く一覧。名前を切らないよう、幅は中身に合わせ、帯の幅を超える名前だけ折り返す */
+  #bmList { position: absolute; z-index: 60; width: max-content; max-width: calc(100% - 8px); overflow: auto;
+    padding: 4px; background: #fff; border: 1px solid #999; border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,.25); }
+  .bm-row { display: flex; padding: 2px 10px 2px 8px; border-radius: 3px; font-size: 15px; line-height: 1.5; color: #1a1a1a; cursor: pointer; user-select: none; }
+  .bm-row:hover { background: #dbe6f3; }
+  .bm-row-mark { flex: 0 0 auto; white-space: pre; color: #555; }
+  .bm-row-name { overflow-wrap: anywhere; }
+  /* ブックマークに入っている行は、帯の階段のリンクと同じ色と下線にする。何も付けていない行は、途中のフォルダ */
+  .bm-row.is-bm .bm-row-name { color: #1a4f8a; text-decoration: underline; }
   /* 場所が見つからないブックマーク（消したか、移したもの）。薄くし、名前に取り消し線を引く */
   .bm-dead { opacity: .55; }
-  .bm-dead .bm-chip-name { text-decoration: line-through; }
+  .bm-dead .bm-chip-name, .bm-row.is-bm.bm-dead .bm-row-name { text-decoration: line-through; }
   /* 左の絞り込み欄の下に出す「本文を検索」ボタン行 */
   .tree-grep { display: none; padding: 6px 8px; margin: 4px 0; border: 1px solid #bbb; border-radius: 4px;
     cursor: pointer; font-size: 13px; color: #000; background: #f7f7f7; }
@@ -263,8 +280,8 @@
   .tree-file.xlink {
     background: #ffe3a0; border-radius: 3px; box-shadow: 0 0 0 2px #f6b93b;
   }
-  /* 帯のブックマークも同じ色で光らせる。ツリーの行を押したときは、同じパスのものを2秒だけ光らせる */
-  .bm-chip.xlink, .bm-chip.bm-hit {
+  /* 帯のボタンと一覧の行も同じ色で光らせる。ツリーの行を押したときは、そのブックマークが入っているボタンを2秒だけ光らせる */
+  .bm-chip.xlink, .bm-chip.bm-hit, .bm-row.xlink {
     background: #ffe3a0; box-shadow: 0 0 0 2px #f6b93b;
   }
   /* ===== 選んだ場所の階層（2026-10-31 本人指示。2026-11-03 本人指示で道筋だけにした） =====
@@ -350,6 +367,7 @@
     <!-- ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） -->
     <div class="bm-bar" id="bmBar" style="display:none;">
       <div class="bm-bar-items" id="bmBarItems"></div>
+      <div id="bmList" style="display:none;"></div>
     </div>
     <div class="file-title" id="fileTitle" style="display:none;">
       <div class="file-title-main"><span id="fileTitleDir"></span><span id="fileTitleName"></span></div>
@@ -359,6 +377,12 @@
       </div>
     </div>
     <div class="viewer-area">
+      <!-- 本文の中を探す欄（2026-11-04 本人指示。本文の上で右ボタンを0.5秒押し続けると開く） -->
+      <div id="findBar" style="display:none;">
+        <input type="text" id="findInput" autocomplete="off" spellcheck="false" placeholder="本文の中を探す" title="Enter で次へ、Shift+Enter で前へ、Esc で閉じる">
+        <span id="findCount"></span>
+        <span id="findClose" title="閉じる（Esc）">×</span>
+      </div>
       <div class="placeholder" id="placeholder">メニューからファイルを選ぶと、ここに表示されます。</div>
       <iframe id="viewer" style="display:none;"></iframe>
       <div id="pdfPane" style="display:none;"></div>
@@ -421,6 +445,7 @@
   var searchInputEl = document.getElementById('searchInput');
   var bmBarEl = document.getElementById('bmBar');
   var bmBarItemsEl = document.getElementById('bmBarItems');
+  var bmListEl = document.getElementById('bmList');
   var topTreeEl = document.getElementById('topTree');   // 上のツリー（2026-10-31 追加）
   var iframe = document.getElementById('viewer');
   var placeholder = document.getElementById('placeholder');
@@ -832,10 +857,19 @@
     layoutFileTitle(winPath);
     box.style.display = 'flex';   // 左に場所とファイル名、右上にボタンを並べる（2026-10-31 変更）
   }
-  // 場所の階段を描き、ファイル名の段の字下げをそろえる。ファイル名の文字（差分の頭書きを含む）は変えない
+  // 場所の階段を描き、ファイル名の段の字下げをそろえる。ファイル名の文字（差分の頭書きを含む）は変えない。
+  // 左メニューを開いている間は階段を出さない（2026-11-04 本人指示。左の「選んだ場所の階層」と同じ道筋が2か所に重なるため）。
+  // メニューを下や別窓に出しているときも、階層は画面に出ているので同じにする。開け閉めしたら、左メニューの apply からここを呼び直す
   function layoutFileTitle(winPath) {
     var nameEl = document.getElementById('fileTitleName');
     var dirEl = document.getElementById('fileTitleDir');
+    if (!menuEl.classList.contains('collapsed')) {
+      dirEl.textContent = '';
+      dirEl.title = '';
+      nameEl.classList.remove('in-steps');
+      nameEl.style.paddingLeft = '';
+      return;
+    }
     var depth = renderDirSteps(dirEl, winPath);
     // ファイル名の段の字下げは、フォルダの段と同じ「1段 1.3 文字」。フォルダの段の字の大きさで測ってそろえる
     var stepPx = parseFloat(getComputedStyle(dirEl).fontSize) || 17;
@@ -2170,15 +2204,101 @@
     if (dl.indexOf(rl + '\\') === 0) return d.substring(root.length + 1);
     return d;   // 作業フォルダの外（.claude 等）は、そのまま出す
   }
-  // ===== ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） =====
-  // 登録した順に「印＋名前」を横に並べ、帯の中で折り返して全部を出す（2026-11-03 本人指示「全部詰め込んで表示する」）。
+  // ===== ブックマークの帯（2026-11-03 本人指示で作り、2026-11-04 本人指示でフォルダごとのボタンと一覧にした） =====
+  // 帯には、ブックマークが入っている3段目のフォルダごとに、フォルダの印のボタンを1つずつ並べ、帯の中で折り返して全部を出す。
+  // ボタンを押すと一覧が開き、その中のブックマークを、ファイル名の帯の場所の階段と同じ └ の階段で、名前を切らずに全部出す。
   // 前は左のメニューの上の欄に、フォルダの入れ子で出していた（2026-09-19〜2026-11-03）
 
-  // 帯の1件の印。フォルダは📁、ファイルは .md が📝、.html が🌐、ほかは📄（Chrome の帯のサイトの印の代わり）
-  function bmIconOf(b) {
-    if (b.dir) return '📁';
-    var x = extOf(String(b.name || baseName(String(b.path))));
-    return x === '.md' ? '📝' : ((x === '.html' || x === '.htm') ? '🌐' : '📄');
+  // まとめるフォルダの段。作業フォルダの直下を1段目に数える（ファイル名の帯の階段と同じ）。
+  // これより浅いものは、入っているフォルダ（フォルダのブックマークはそのフォルダ自身）を1つのボタンにする
+  var BM_GROUP_DEPTH = 3;
+  var bmGroups = [];     // ボタンの並び。{ path, name, node（一覧の木）, total, gone }
+  var bmChipOfKey = {};  // パスの鍵 → ボタンの番号。ツリーの行に乗せたときに、光らせるボタンを引く
+  var bmListKey = '';    // 開いている一覧のフォルダの鍵（閉じていれば空）
+  // パスを段に分ける。base は1段目の手前の絶対パス、segs は1段目から下の名前
+  function bmSegsOf(p) {
+    var SEP = String.fromCharCode(92);
+    var path = String(p).replace(/\//g, SEP).replace(/\\+$/, '');
+    var lp = path.toLowerCase();
+    var root = (treeRootPath || '').replace(/[\\\/]+$/, '');
+    if (root && lp.indexOf(root.toLowerCase() + SEP) === 0) {
+      return { base: root, segs: path.substring(root.length + 1).split(SEP) };
+    }
+    // 作業フォルダの外は、ツリーの一番上の段にあるフォルダ（.claude など）を1段目にする
+    var top = (treeData && treeData.children || []).filter(function (it) {
+      var k = String(it.path).toLowerCase();
+      return it.children && (lp === k || lp.indexOf(k + SEP) === 0);
+    })[0];
+    var base = top ? dirName(top.path) : dirName(dirName(path));   // ツリーに無い場所は、すぐ上のフォルダを1段目にする
+    if (!base) base = dirName(path);
+    return { base: base, segs: path.substring(base.length + 1).split(SEP) };
+  }
+  // ブックマークを3段目のフォルダごとにまとめ、フォルダの中を一覧の木にする。ボタンの並びは、そのフォルダのものを初めて登録した順
+  function bmBuildGroups(a) {
+    var SEP = String.fromCharCode(92), groups = [], byKey = {};
+    a.forEach(function (b) {
+      var s = bmSegsOf(b.path);
+      var isDir = !!b.dir || !!nodeMap[String(b.path).toLowerCase()];
+      var folders = isDir ? s.segs : s.segs.slice(0, -1);
+      var n = Math.min(BM_GROUP_DEPTH, folders.length);
+      var gpath = n ? s.base + SEP + folders.slice(0, n).join(SEP) : s.base;
+      var gk = bmKey(gpath), g = byKey[gk];
+      if (!g) {
+        g = byKey[gk] = { path: gpath, name: baseName(gpath), total: 0, gone: 0,
+          node: { name: baseName(gpath), path: gpath, dir: true, kids: [], bm: null } };
+        groups.push(g);
+      }
+      g.total++;
+      if (bmIsGone(b)) g.gone++;
+      var node = g.node, cur = gpath, rest = s.segs.slice(n);
+      rest.forEach(function (name, i) {
+        cur += SEP + name;
+        var kid = node.kids.filter(function (k) { return k.name === name; })[0];
+        if (!kid) {
+          kid = { name: name, path: cur, dir: i < rest.length - 1 || isDir, kids: [], bm: null };
+          node.kids.push(kid);
+        }
+        node = kid;
+      });
+      node.bm = b;
+    });
+    return groups;
+  }
+  // 一覧の行を作る。形はファイル名の帯の階段（renderDirSteps）と同じで、2段目から └ を付け、1段につき 1.3 文字下げる。
+  // 同じ段の中は、フォルダを先に、名前の順に並べる
+  function bmRowsHtml(node, depth) {
+    var cls = 'bm-row' + (node.bm ? ' is-bm' : '') + (node.bm && bmIsGone(node.bm) ? ' bm-dead' : '');
+    var html = '<div class="' + cls + '" data-path="' + esc(node.path) + '" data-dir="' + (node.dir ? '1' : '0') + '"'
+      + ' style="padding-left:calc(8px + ' + (Math.max(0, depth - 1) * 1.3) + 'em);">'
+      + (depth ? '<span class="bm-row-mark">└ </span>' : '')
+      + '<span class="bm-row-name">' + esc(node.name) + '</span></div>';
+    node.kids.slice().sort(function (x, y) {
+      if (x.dir !== y.dir) return x.dir ? -1 : 1;
+      return x.name.localeCompare(y.name, 'ja');
+    }).forEach(function (k) { html += bmRowsHtml(k, depth + 1); });
+    return html;
+  }
+  function closeBmList() {
+    if (!bmListKey) return;
+    bmListKey = '';
+    bmListEl.style.display = 'none';
+    bmListEl.innerHTML = '';
+    bmBarItemsEl.querySelectorAll('.bm-chip.open').forEach(function (c) { c.classList.remove('open'); });
+  }
+  // i 番目のボタンの一覧を、ボタンのすぐ下に開く。右にはみ出すときは左へ寄せ、下にはみ出す分は一覧の中で送る
+  function openBmList(i) {
+    closeBmList();
+    var g = bmGroups[i], chip = bmBarItemsEl.querySelector('.bm-chip[data-group="' + i + '"]');
+    if (!g || !chip) return;
+    bmListKey = bmKey(g.path);
+    chip.classList.add('open');
+    bmListEl.innerHTML = bmRowsHtml(g.node, 0);
+    bmListEl.style.display = 'block';
+    bmListEl.style.left = '0px';
+    var bar = bmBarEl.getBoundingClientRect(), c = chip.getBoundingClientRect();
+    bmListEl.style.top = (c.bottom - bar.top + 2) + 'px';
+    bmListEl.style.maxHeight = Math.max(120, window.innerHeight - c.bottom - 12) + 'px';
+    bmListEl.style.left = Math.max(4, Math.min(c.left - bar.left, bar.width - bmListEl.offsetWidth - 4)) + 'px';
   }
   // 場所が見つからないブックマーク（消したか、移したもの）を確かめる（2026-11-03 本人指示）。
   // ツリーにあれば「ある」。ツリーに無いもの（深すぎる場所、除外したフォルダ、消したもの）だけサーバーに聞く。
@@ -2225,20 +2345,37 @@
   function renderBookmarks() {
     var a = getBm();
     if (!BM_ENABLED || !a.length) {
-      bmBarEl.style.display = 'none'; bmBarItemsEl.innerHTML = ''; bmGoneCount = 0;
+      closeBmList();
+      bmBarEl.style.display = 'none'; bmBarItemsEl.innerHTML = ''; bmGroups = []; bmChipOfKey = {}; bmGoneCount = 0;
       return;
     }
-    var html = '', gone = 0;
-    a.forEach(function (b) {
-      var isGone = bmIsGone(b);
-      if (isGone) gone++;
-      html += '<span class="bm-chip' + (isGone ? ' bm-dead' : '') + '" data-path="' + esc(String(b.path)) + '">'
-        + '<span class="bm-chip-icon">' + bmIconOf(b) + '</span>'
-        + '<span class="bm-chip-name">' + esc(String(b.name || baseName(String(b.path)))) + '</span></span>';
+    if (!treeData) return;   // 段を数えるのに作業フォルダの場所が要る。ツリーを読んだら renderTree からまた呼ばれる
+    var reopen = bmListKey;  // 裏でツリーや登録が変わって描き直すときも、開いていた一覧は開いたままにする
+    closeBmList();
+    bmGroups = bmBuildGroups(a);
+    bmChipOfKey = {};
+    var html = '';
+    bmGoneCount = 0;
+    function mapKeys(node, i) {
+      if (node.bm) bmChipOfKey[pathKey(node.path)] = i;
+      node.kids.forEach(function (k) { mapKeys(k, i); });
+    }
+    bmGroups.forEach(function (g, i) {
+      bmGoneCount += g.gone;
+      bmChipOfKey[pathKey(g.path)] = i;
+      mapKeys(g.node, i);
+      // 中のブックマークが全部見つからないときだけ、ボタンにも取り消し線を引く
+      html += '<span class="bm-chip' + (g.gone === g.total ? ' bm-dead' : '') + '" data-group="' + i + '" data-path="' + esc(g.path) + '">'
+        + '<span class="bm-chip-icon">📁</span>'
+        + '<span class="bm-chip-name">' + esc(g.name) + '</span></span>';
     });
-    bmGoneCount = gone;
     bmBarItemsEl.innerHTML = html;
     bmBarEl.style.display = '';
+    if (reopen) {
+      for (var i = 0; i < bmGroups.length; i++) {
+        if (bmKey(bmGroups[i].path) === reopen) { openBmList(i); break; }
+      }
+    }
   }
   // 場所が見つからないブックマークを、まとめて外す。ツリーを読み直してから全部を確かめ直し、外すものの名前を見せて確かめてから外す
   function sweepGoneBms() {
@@ -2272,8 +2409,8 @@
     var k = bmKey(p);
     return getBm().some(function (b) { return bmKey(b.path) === k && !!b.dir; });
   }
-  function openBookmark(p) {
-    if (isDirPath(p) || isBmDir(p)) {
+  function openBookmark(p, isDir) {
+    if (isDir || isDirPath(p) || isBmDir(p)) {
       urlInput.value = p;
       updateClearBtn();
       updateBmBtn();
@@ -2295,25 +2432,40 @@
     }
     toggleBm(p);
   });
-  // 帯のブックマークを押したとき。場所が見つからないものは開かずに知らせる
+  // 帯のボタンを押すと一覧を開き、もう一度押すと閉じる。一覧の行を押すと、そのファイルかフォルダを開いて一覧を閉じる。
+  // 場所が見つからないものは開かずに知らせる
   bmBarEl.addEventListener('click', function (e) {
-    var el = e.target.closest('.bm-chip');
-    if (!el || !el.dataset.path) return;
-    if (el.classList.contains('bm-dead')) {
-      flashMsg('場所が見つかりません（消したか、移したようです）。右クリックで外せます: ' + baseName(el.dataset.path), '#c00');
+    var row = e.target.closest('.bm-row');
+    if (row) {
+      var p = row.dataset.path, dead = row.classList.contains('bm-dead'), isDir = row.dataset.dir === '1';
+      closeBmList();
+      if (dead) {
+        flashMsg('場所が見つかりません（消したか、移したようです）。右クリックで外せます: ' + baseName(p), '#c00');
+        return;
+      }
+      openBookmark(p, isDir);
       return;
     }
-    openBookmark(el.dataset.path);
+    var chip = e.target.closest('.bm-chip');
+    if (!chip) return;
+    if (bmListKey === bmKey(chip.dataset.path)) closeBmList();
+    else openBmList(parseInt(chip.dataset.group, 10));
   });
-  // 右クリックのメニュー。外す、パスのコピー、場所が見つからないものをまとめて外す
+  // 一覧の外を押したら閉じる。本文の枠の中を押したときは hookIframeKeys が閉じる
+  document.addEventListener('mousedown', function (e) {
+    if (!bmListKey || !e.target.closest) return;
+    if (!e.target.closest('#bmList, .bm-chip')) closeBmList();
+  });
+  // 右クリックのメニュー。登録か外す、パスのコピー、場所が見つからないものをまとめて外す。ボタンはそのフォルダ、行はその行の場所が相手
   bmBarEl.addEventListener('contextmenu', function (e) {
-    var el = e.target.closest ? e.target.closest('.bm-chip') : null;
+    var el = e.target.closest ? e.target.closest('.bm-row, .bm-chip') : null;
     if (!el || !el.dataset.path) return;
     e.preventDefault();
-    var p = el.dataset.path;
+    var p = el.dataset.path, on = isBm(p);
     var items = [
-      { label: '★ ブックマークから外す：' + baseName(p), run: function () {
-        toggleBm(p); flashMsg('★ ブックマークから外しました: ' + baseName(p));
+      { label: (on ? '★ ブックマークから外す：' : '★ ブックマークに登録：') + baseName(p), run: function () {
+        toggleBm(p);
+        flashMsg((on ? '★ ブックマークから外しました: ' : '★ ブックマークに登録しました: ') + baseName(p));
       } },
       { label: '📋 パスをコピー', run: function () {
         copyText(p).then(function () { flashMsg('パスをコピーしました: ' + baseName(p)); }, function () {});
@@ -2346,15 +2498,22 @@
   }
   function bmHoverPath(t) {
     if (!t || !t.closest) return '';
-    var r = t.closest('.bm-chip');
+    var r = t.closest('.bm-row, .bm-chip');
     return r ? (r.dataset.path || '') : '';
   }
-  // 帯は件数が少ないので総なめしてよい。ツリーは数万行あるので属性セレクタで1回だけ引く
+  // ツリーの行に対応する、帯のボタンと、開いている一覧の行を返す。閉じている一覧の行は見えないので、入っているボタンを光らせる。
+  // 一覧は件数が少ないので総なめしてよい。ツリーは数万行あるので属性セレクタで1回だけ引く
   function bmRowsFor(key) {
-    var out = [];
-    bmBarItemsEl.querySelectorAll('.bm-chip').forEach(function (el) {
-      if (pathKey(el.dataset.path) === key) out.push(el);
-    });
+    var out = [], i = bmChipOfKey[key];
+    if (i !== undefined) {
+      var chip = bmBarItemsEl.querySelector('.bm-chip[data-group="' + i + '"]');
+      if (chip) out.push(chip);
+    }
+    if (bmListKey) {
+      bmListEl.querySelectorAll('.bm-row').forEach(function (el) {
+        if (pathKey(el.dataset.path) === key) out.push(el);
+      });
+    }
     return out;
   }
   function treeRowsFor(p) {
@@ -2376,7 +2535,7 @@
     for (var i = 0; i < els.length; i++) els[i].classList.add('xlink');
     xlinkEls = els; xlinkKey = mark;
   }
-  // ツリーの行を押したとき、同じパスのブックマークを帯の上で2秒だけ光らせる（2026-09-22 本人指示。2026-11-03 帯に移した）。
+  // ツリーの行を押したとき、そのブックマークが入っている帯のボタンを2秒だけ光らせる（2026-09-22 本人指示。2026-11-03 帯に移した）。
   // ブックマークに無い行を押したときは光らせない
   var bmHitEl = null, bmHitTimer = 0;
   function revealBmRow(p) {
@@ -2396,8 +2555,8 @@
   }
   treeEl.addEventListener('mouseover', function (e) { setXlink(treeHoverPath(e.target), 'tree'); });
   treeEl.addEventListener('mouseleave', clearXlink);
-  bmBarItemsEl.addEventListener('mouseover', function (e) { setXlink(bmHoverPath(e.target), 'bm'); });
-  bmBarItemsEl.addEventListener('mouseleave', clearXlink);
+  bmBarEl.addEventListener('mouseover', function (e) { setXlink(bmHoverPath(e.target), 'bm'); });
+  bmBarEl.addEventListener('mouseleave', clearXlink);
 
   renderBookmarks();
   loadBmFile();   // ファイルの中身で描き直す（ブラウザのデータを消しても戻るように）
@@ -2607,6 +2766,12 @@
       var isF1 = (e.key === 'F1' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey);
       var isCtrlB = ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'b' || e.key === 'B'));
       var isEsc = (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey);
+      // 探す欄を開いている間は、本文を押したあとでも Enter で次へ、Shift+Enter で前へ移れるようにする
+      if (e.key === 'Enter' && isFindOpen() && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        findStep(e.shiftKey ? -1 : 1);
+        return;
+      }
       if (!isF1 && !isCtrlB && !isEsc) return;
       e.preventDefault();   // ブラウザ既定（F1のヘルプ等）を枠の中で止める
       document.dispatchEvent(new KeyboardEvent('keydown', {
@@ -2614,8 +2779,18 @@
         bubbles: true, cancelable: true
       }));
     });
-    // 本文の上で右クリック → クリップボードのパスを開く（2026-09-19 追加。下の openFromClipboard を参照）
-    doc.addEventListener('contextmenu', function (e) { e.preventDefault(); openFromClipboard(); });
+    // 本文の上で右クリック → クリップボードのパスを開く（2026-09-19 追加。下の openFromClipboard を参照）。
+    // 右ボタンを0.5秒押し続けたときは、離したときのこの知らせを受け流す（長押しは本文の中を探す。2026-11-04）
+    doc.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      if (holdConsumed()) return;
+      openFromClipboard();
+    });
+    doc.addEventListener('mousedown', function (e) {
+      holdStart(e);
+      closeBmList();   // 本文を押したら、ブックマークの一覧を閉じる（枠の中の押下は外側の document に届かないため）
+    });
+    doc.addEventListener('mouseup', holdCancel);
   }
   iframe.addEventListener('load', hookIframeKeys);
 
@@ -2643,11 +2818,218 @@
       msg.textContent = 'クリップボードを読めませんでした（画面上部の「許可」を押すと以後は読めます）';
     });
   }
-  document.querySelector('.viewer-area').addEventListener('contextmenu', function (e) {
-    if (e.target.closest('#editor, #outlinePane')) return;   // 編集中の欄と目次は通常の右クリックのまま
+  // 編集中の欄、目次、探す欄は通常の右クリックのまま
+  function viewerAreaKeepsMenu(t) { return !!t.closest('#editor, #outlinePane, #findBar'); }
+  var viewerAreaEl = document.querySelector('.viewer-area');
+  viewerAreaEl.addEventListener('contextmenu', function (e) {
+    if (viewerAreaKeepsMenu(e.target)) return;
     e.preventDefault();
+    if (holdConsumed()) return;
     openFromClipboard();
   });
+  viewerAreaEl.addEventListener('mousedown', function (e) { if (!viewerAreaKeepsMenu(e.target)) holdStart(e); });
+  viewerAreaEl.addEventListener('mouseup', holdCancel);
+
+  // ===== 本文の中を、クリップボードの文字で探す（2026-11-04 本人指示） =====
+  // 本文の上で右ボタンを0.5秒押し続けると、クリップボードの最初の行を右上の欄に入れて、本文の中を探す。短い右クリックは、これまでどおりパスを開く。
+  // 見つかった所は全部黄色にし、いま見ている1件だけ橙色にする。色は CSS Custom Highlight（本文の HTML を書き換えずに、範囲に色を付ける仕組み）で付ける。
+  // <mark> で包むと本文の HTML が変わるうえ、太字の前後のように要素をまたぐ文字に付けられないため
+  var FIND_HOLD_MS = 500;
+  var FIND_MAX = 5000;   // 色を付ける上限。これを超える件数は「5000+」と出す（長い文書で固まらないように）
+  var findBarEl = document.getElementById('findBar');
+  var findInputEl = document.getElementById('findInput');
+  var findCountEl = document.getElementById('findCount');
+  var findRanges = [], findIndex = -1, findCapped = false, findTimer = 0, findPath = '';
+  var holdTimer = 0, holdFired = false;
+
+  function holdStart(e) {
+    if (e.button !== 2) return;
+    holdFired = false;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(function () { holdFired = true; openFindFromClipboard(); }, FIND_HOLD_MS);
+  }
+  function holdCancel(e) { if (e.button === 2) clearTimeout(holdTimer); }
+  // 右クリックの知らせ（contextmenu）で呼ぶ。長押しで探したあとに右ボタンを離したのなら true を返す
+  function holdConsumed() {
+    clearTimeout(holdTimer);
+    var fired = holdFired;
+    holdFired = false;
+    return fired;
+  }
+  function isFindOpen() { return findBarEl.style.display !== 'none'; }
+  // 探せる本文（枠の中の文書）を返す。PDF の表示や、ファイルを開く前は枠を隠しているので探せない
+  function findDoc() {
+    if (iframe.style.display === 'none') return null;
+    try { return iframe.contentDocument; } catch (e) { return null; }
+  }
+  function openFindFromClipboard() {
+    if (!findDoc()) { flashMsg('この表示では本文の中を探せません（PDF や、ファイルを開く前など）', '#c00'); return; }
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      flashMsg('このブラウザではクリップボードを読めません', '#c00');
+      return;
+    }
+    navigator.clipboard.readText().then(function (t) {
+      var line = (t || '').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean)[0] || '';
+      if (!line) flashMsg('クリップボードが空です', '#c00');
+      findBarEl.style.display = 'flex';
+      findInputEl.value = line;
+      runFind();
+      findInputEl.focus();
+      findInputEl.select();
+    }).catch(function () {
+      flashMsg('クリップボードを読めませんでした（画面上部の「許可」を押すと以後は読めます）', '#c00');
+    });
+  }
+  // 探す文字の形。文書の中で改行や字下げが挟まっていても見つかるよう、空白は無視して1文字ずつ比べる。大文字と小文字は区別しない
+  function findPattern(text) {
+    var chars = Array.from(text.replace(/\s+/g, ''));
+    if (!chars.length) return null;
+    return new RegExp(chars.map(function (c) { return c.replace(/[.*+?^${}()|[\]\\\/]/g, '\\$&'); }).join('\\s*'), 'giu');
+  }
+  // 画面に出る文字（テキストノード）を集める。画面に出ない要素と display:none の中は除く
+  function findCollect(doc, win) {
+    var SKIP = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, TEXTAREA: 1, TITLE: 1, DESC: 1, METADATA: 1, DEFS: 1 };
+    var hidden = new Map();
+    function isHidden(el) {
+      if (!el || el.nodeType !== 1) return false;
+      if (hidden.has(el)) return hidden.get(el);
+      var r = !!SKIP[el.tagName.toUpperCase()] || win.getComputedStyle(el).display === 'none' || isHidden(el.parentElement);
+      hidden.set(el, r);
+      return r;
+    }
+    var walker = doc.createTreeWalker(doc.body || doc.documentElement, 4);   // 4 は NodeFilter.SHOW_TEXT（テキストノードだけを見る）
+    var nodes = [], starts = [], parts = [], pos = 0, n;
+    while ((n = walker.nextNode())) {
+      if (!n.data || isHidden(n.parentElement)) continue;
+      nodes.push(n); starts.push(pos); parts.push(n.data);
+      pos += n.data.length;
+    }
+    return { nodes: nodes, starts: starts, text: parts.join('') };
+  }
+  // つないだ文字列の中の位置から、何番目のテキストノードかを引く
+  function findNodeIndexAt(starts, off) {
+    var lo = 0, hi = starts.length - 1;
+    while (lo < hi) {
+      var mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= off) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+  }
+  // 色の指定を本文の文書に1回だけ入れる
+  function findEnsureStyle(doc) {
+    if (doc.getElementById('hhFindStyle')) return;
+    var st = doc.createElement('style');
+    st.id = 'hhFindStyle';
+    st.textContent = '::highlight(hhfind){background-color:#ffeb3b;color:#000;}'
+      + '::highlight(hhfindcur){background-color:#ff9800;color:#000;}';
+    (doc.head || doc.documentElement).appendChild(st);
+  }
+  function findClearPaint() {
+    try {
+      var hl = iframe.contentWindow.CSS.highlights;
+      hl.delete('hhfind');
+      hl.delete('hhfindcur');
+    } catch (e) {}
+  }
+  function findPaintAll(doc, win) {
+    if (!win.CSS || !win.CSS.highlights || !win.Highlight) return;
+    findEnsureStyle(doc);
+    var all = new win.Highlight();
+    findRanges.forEach(function (r) { all.add(r); });
+    win.CSS.highlights.set('hhfind', all);
+  }
+  function findPaintCurrent(win) {
+    if (!win.CSS || !win.CSS.highlights || !win.Highlight) return;
+    win.CSS.highlights.delete('hhfindcur');
+    if (findIndex < 0 || !findRanges[findIndex]) return;
+    var cur = new win.Highlight(findRanges[findIndex]);
+    cur.priority = 1;   // 黄色より上に重ねる
+    win.CSS.highlights.set('hhfindcur', cur);
+  }
+  function findShowCount() {
+    var none = !findRanges.length && !!findInputEl.value.trim();
+    findCountEl.classList.toggle('none', none);
+    findCountEl.textContent = findRanges.length
+      ? (findIndex + 1) + ' / ' + findRanges.length + (findCapped ? '+' : '')
+      : (none ? '0 件' : '');
+  }
+  // 欄の文字で探し直す。keep のときは、同じファイルの読み直しなので、見ていた位置を動かさない
+  function runFind(keep) {
+    clearTimeout(findTimer);
+    findTimer = 0;
+    var doc = findDoc(), win = doc && iframe.contentWindow;
+    var prev = findIndex;
+    findRanges = []; findIndex = -1; findCapped = false;
+    findClearPaint();
+    findPath = currentWin;
+    var re = findPattern(findInputEl.value);
+    if (!doc || !win || !re) { findShowCount(); return; }
+    var c = findCollect(doc, win), m;
+    if (c.nodes.length) {
+      while ((m = re.exec(c.text))) {
+        if (findRanges.length >= FIND_MAX) { findCapped = true; break; }
+        var end = m.index + m[0].length;
+        var a = findNodeIndexAt(c.starts, m.index), b = findNodeIndexAt(c.starts, end - 1);
+        var r = doc.createRange();
+        r.setStart(c.nodes[a], m.index - c.starts[a]);
+        r.setEnd(c.nodes[b], end - c.starts[b]);
+        findRanges.push(r);
+      }
+    }
+    findPaintAll(doc, win);
+    if (!findRanges.length) { findShowCount(); return; }
+    if (keep) {
+      findIndex = Math.min(Math.max(prev, 0), findRanges.length - 1);
+      findPaintCurrent(win);
+      findShowCount();
+      return;
+    }
+    findGo(0);
+  }
+  // i 件目へ移る。端まで行ったら反対の端へ回る
+  function findGo(i) {
+    var doc = findDoc(), win = doc && iframe.contentWindow;
+    if (!win || !findRanges.length) { findShowCount(); return; }
+    findIndex = (i + findRanges.length) % findRanges.length;
+    findPaintCurrent(win);
+    findShowCount();
+    var r = findRanges[findIndex], el = r.startContainer.parentElement;
+    // 畳んである <details> の中なら開く。閉じたままだと位置が無く、送れないため
+    for (var d = el; d; d = d.parentElement) {
+      if (d.tagName && d.tagName.toUpperCase() === 'DETAILS' && !d.open) d.open = true;
+    }
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    // 長い段落では、段落を真ん中に送っても文字が画面の外に残るので、文字の位置で送り直す
+    var rc = r.getBoundingClientRect();
+    if (rc.height && (rc.top < 0 || rc.bottom > win.innerHeight)) win.scrollBy(0, rc.top - win.innerHeight / 2);
+  }
+  function findStep(dir) {
+    if (findTimer) { runFind(); return; }   // 欄の文字を変えた直後は、先に探し直す
+    if (!findRanges.length) { runFind(); return; }
+    findGo(findIndex + dir);
+  }
+  function closeFind() {
+    clearTimeout(findTimer);
+    findTimer = 0;
+    findBarEl.style.display = 'none';
+    findClearPaint();
+    findRanges = []; findIndex = -1; findCapped = false;
+    try { if (iframe.style.display !== 'none') iframe.contentWindow.focus(); } catch (e) {}
+  }
+  function findSchedule() {
+    clearTimeout(findTimer);
+    findTimer = setTimeout(function () { runFind(); }, 200);
+  }
+  findInputEl.addEventListener('keydown', function (e) {
+    if (e.isComposing) return;   // 日本語を変換している間の Enter は確定なので、次へ移らない
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); findStep(e.shiftKey ? -1 : 1); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); }
+  });
+  findInputEl.addEventListener('input', function (e) { if (!e.isComposing) findSchedule(); });
+  findInputEl.addEventListener('compositionend', findSchedule);
+  document.getElementById('findClose').addEventListener('click', closeFind);
+  // 本文を読み直したとき（別のファイルを開いた、書き換わって自動で読み直した）も、欄を開いていれば探し直す。同じファイルなら位置は動かさない
+  iframe.addEventListener('load', function () { if (isFindOpen()) runFind(samePath(currentWin, findPath)); });
   document.getElementById('outlinePane').addEventListener('click', function (e) {
     var item = e.target.closest('.ol-item');
     if (!item) return;
@@ -2980,6 +3362,7 @@
         tab.textContent = hidden ? 'メニュー表示' : 'メニュー非表示';
         tab.title = btn.title;
       }
+      if (titlePath) layoutFileTitle(titlePath);   // 帯の階段は、メニューを隠している間だけ出す（2026-11-04 本人指示）
     }
     function set(hidden) {
       apply(hidden);
@@ -3033,6 +3416,8 @@
   }
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    if (!ctxCleanup && bmListKey) { closeBmList(); return; }           // ブックマークの一覧が開いている
+    if (!ctxCleanup && isFindOpen()) { closeFind(); return; }          // 本文の中を探す欄が開いている
     if (isMaximized()) { setMaximized(false); return; }                // 最大化の間は、読み直さずに元の画面に戻す
     if (ctxCleanup) return;                                            // 右クリックのメニューが開いている
     if (histEl && histEl.style.display !== 'none') return;             // パス欄の履歴が開いている
