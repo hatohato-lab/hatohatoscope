@@ -241,15 +241,17 @@
   .tree-d-btn { flex: 0 0 auto; width: 16px; height: 16px; margin-right: 6px; text-align: center; font-family: Consolas, monospace; font-size: 12px; line-height: 15px; color: #b45f06; background: #fdf0e0; border: 1px solid #e8c9a0; border-radius: 3px; cursor: pointer; user-select: none; }
   .tree-d-btn:hover { background: #b45f06; color: #fff; border-color: #b45f06; }
   /* ===== ブックマークの帯（2026-11-03 本人指示。2026-11-04 本人指示でフォルダごとのボタンと一覧にした） =====
-     パス欄のすぐ下に、ブックマークが入っている3段目のフォルダごとのボタンを並べ、帯の中で折り返して全部を出す。
+     パス欄のすぐ下に、ブックマークが入っている作業フォルダ直下のフォルダごとのボタンを並べ、帯の中で折り返して全部を出す。
+     ボタンは名前を切らず、右に中のブックマークの数を出す。帯の幅を超える名前だけ「…」で切る。
      押すと一覧が開き、その中のブックマークを、ファイル名の帯の場所の階段と同じ形で、名前を切らずに全部出す。
      前は左のメニューの上に欄があり、ツリーの場所を狭めていた */
   .bm-bar { position: relative; display: flex; padding: 2px 6px; background: #fafafa; border-bottom: 1px solid #ccc; }
   .bm-bar-items { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
-  .bm-chip { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; max-width: 11em;
+  .bm-chip { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; max-width: 100%; box-sizing: border-box;
     padding: 2px 8px; border-radius: 12px; font-size: 14px; color: #1a1a1a; cursor: pointer;
     white-space: nowrap; user-select: none; }
   .bm-chip-name { overflow: hidden; text-overflow: ellipsis; }
+  .bm-chip-count { flex: 0 0 auto; font-size: 12px; color: #555; font-variant-numeric: tabular-nums; }
   .bm-chip:hover, .bm-chip.open { background: #dbe6f3; }
   /* ボタンを押すと開く一覧。名前を切らないよう、幅は中身に合わせ、帯の幅を超える名前だけ折り返す */
   #bmList { position: absolute; z-index: 60; width: max-content; max-width: calc(100% - 8px); overflow: auto;
@@ -2205,13 +2207,14 @@
     return d;   // 作業フォルダの外（.claude 等）は、そのまま出す
   }
   // ===== ブックマークの帯（2026-11-03 本人指示で作り、2026-11-04 本人指示でフォルダごとのボタンと一覧にした） =====
-  // 帯には、ブックマークが入っている3段目のフォルダごとに、フォルダの印のボタンを1つずつ並べ、帯の中で折り返して全部を出す。
+  // 帯には、ブックマークが入っている作業フォルダ直下のフォルダごとに、フォルダの印と件数のボタンを1つずつ並べ、帯の中で折り返して全部を出す。
   // ボタンを押すと一覧が開き、その中のブックマークを、ファイル名の帯の場所の階段と同じ └ の階段で、名前を切らずに全部出す。
   // 前は左のメニューの上の欄に、フォルダの入れ子で出していた（2026-09-19〜2026-11-03）
 
   // まとめるフォルダの段。作業フォルダの直下を1段目に数える（ファイル名の帯の階段と同じ）。
-  // これより浅いものは、入っているフォルダ（フォルダのブックマークはそのフォルダ自身）を1つのボタンにする
-  var BM_GROUP_DEPTH = 3;
+  // 2026-11-04 に3段目で作ったが、28件が24個のボタンに分かれてばらばらに見えたので、同じ日に1段目にした（本人指示。会社のビューアの形）。
+  // 作業フォルダの直下のファイルは、作業フォルダ自身を1つのボタンにする
+  var BM_GROUP_DEPTH = 1;
   var bmGroups = [];     // ボタンの並び。{ path, name, node（一覧の木）, total, gone }
   var bmChipOfKey = {};  // パスの鍵 → ボタンの番号。ツリーの行に乗せたときに、光らせるボタンを引く
   var bmListKey = '';    // 開いている一覧のフォルダの鍵（閉じていれば空）
@@ -2233,7 +2236,7 @@
     if (!base) base = dirName(path);
     return { base: base, segs: path.substring(base.length + 1).split(SEP) };
   }
-  // ブックマークを3段目のフォルダごとにまとめ、フォルダの中を一覧の木にする。ボタンの並びは、そのフォルダのものを初めて登録した順
+  // ブックマークを BM_GROUP_DEPTH 段目のフォルダごとにまとめ、フォルダの中を一覧の木にする。ボタンの並びは、そのフォルダのものを初めて登録した順
   function bmBuildGroups(a) {
     var SEP = String.fromCharCode(92), groups = [], byKey = {};
     a.forEach(function (b) {
@@ -2367,7 +2370,8 @@
       // 中のブックマークが全部見つからないときだけ、ボタンにも取り消し線を引く
       html += '<span class="bm-chip' + (g.gone === g.total ? ' bm-dead' : '') + '" data-group="' + i + '" data-path="' + esc(g.path) + '">'
         + '<span class="bm-chip-icon">📁</span>'
-        + '<span class="bm-chip-name">' + esc(g.name) + '</span></span>';
+        + '<span class="bm-chip-name">' + esc(g.name) + '</span>'
+        + '<span class="bm-chip-count">' + g.total + '</span></span>';
     });
     bmBarItemsEl.innerHTML = html;
     bmBarEl.style.display = '';
