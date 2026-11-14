@@ -286,6 +286,32 @@
   .bm-chip.xlink, .bm-chip.bm-hit, .bm-row.xlink {
     background: #ffe3a0; box-shadow: 0 0 0 2px #f6b93b;
   }
+  /* ===== ブックマークの地図（2026-11-14 本人指示） =====
+     帯の左端の「地図」ボタンで、本文の欄の上に重ねて、ブックマークをマインドマップの形で出す。
+     中心が「ブックマーク」、1段目が帯のボタンと同じフォルダ、その先が一覧と同じ階層。表示だけで、ノードを押すと一覧の行と同じに開く。
+     登録したものは ★ と青い字（一覧の行と同じ青）、場所が見つからないものは薄くして取り消し線。線と枠は灰色と黒だけにする */
+  #bmMapBtn { flex: 0 0 auto; align-self: flex-start; margin: 1px 6px 1px 0; padding: 2px 10px; font-size: 14px; line-height: 1.3; cursor: pointer;
+    background: #eee; border: 1px solid #bbb; border-radius: 3px; }
+  #bmMapBtn:hover, #bmMapBtn.on { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
+  #bmMapBtn.on { font-weight: bold; }
+  /* 本文の枠（iframe）や目次の上に重ねる。本文の中を探す欄（z-index 45）よりは下、ブックマークの一覧（60）よりも下 */
+  #bmMap { position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 40; background: #fff; overflow: hidden; }
+  .bmm-tools { position: absolute; left: 8px; top: 6px; right: 8px; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    font-size: 13px; color: #333; pointer-events: none; }
+  .bmm-tools button { pointer-events: auto; font-size: 13px; padding: 2px 10px; cursor: pointer; background: #eee; border: 1px solid #bbb; border-radius: 3px; }
+  .bmm-tools button:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
+  #bmMapSvg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; cursor: grab; user-select: none; touch-action: none; }
+  #bmMapSvg.grabbing { cursor: grabbing; }
+  #bmMapSvg text { font-family: "Segoe UI", "Meiryo", sans-serif; fill: #1a1a1a; pointer-events: none; }
+  .bmm-node { cursor: pointer; }
+  .bmm-node .bmm-hit { fill: #fff; fill-opacity: 0; }
+  .bmm-node:hover .bmm-hit { fill: #dbe6f3; fill-opacity: 1; }
+  .bmm-node.bmm-root { cursor: default; }
+  .bmm-node.bmm-root .bmm-hit, .bmm-node.bmm-root:hover .bmm-hit { fill: #fff; fill-opacity: 1; stroke: #333; stroke-width: 2px; }
+  #bmMapSvg .bmm-node.is-bm .bmm-name { fill: #1a4f8a; }
+  #bmMapSvg .bmm-star { fill: #e8a11a; }
+  .bmm-node.bmm-dead { opacity: .55; }
+  .bmm-node.bmm-dead .bmm-name { text-decoration: line-through; }
   /* ===== 選んだ場所の階層（2026-10-31 本人指示。2026-11-03 本人指示で道筋だけにした） =====
      下のツリーで選んだものと、その上のフォルダだけを並べる。行の見た目は下のツリーの指定をそのまま使う */
   .top-box { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 6px; }
@@ -368,6 +394,7 @@
     </div>
     <!-- ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） -->
     <div class="bm-bar" id="bmBar" style="display:none;">
+      <button id="bmMapBtn" title="ブックマークを地図（マインドマップの形）で見る / 閉じる">地図</button>
       <div class="bm-bar-items" id="bmBarItems"></div>
       <div id="bmList" style="display:none;"></div>
     </div>
@@ -390,6 +417,15 @@
       <div id="pdfPane" style="display:none;"></div>
       <div id="outlinePane"></div>
       <textarea id="editor" style="display:none;width:100%;height:100%;border:none;padding:12px;font-family:Consolas,monospace;font-size:14px;box-sizing:border-box;resize:none;"></textarea>
+      <!-- ブックマークの地図（2026-11-14 本人指示。帯の「地図」ボタンで、本文の欄の上に重ねて出す） -->
+      <div id="bmMap" style="display:none;">
+        <svg id="bmMapSvg" xmlns="http://www.w3.org/2000/svg"><g id="bmMapVp"><g id="bmMapEdges"></g><g id="bmMapNodes"></g></g></svg>
+        <div class="bmm-tools">
+          <button id="bmMapFitBtn" title="地図の全体が見える大きさと位置に戻す">全体を表示</button>
+          <button id="bmMapCloseBtn" title="地図を閉じる（Esc）">閉じる</button>
+          <span>ノードを押すと開きます。ドラッグで動かし、ホイールで拡大と縮小</span>
+        </div>
+      </div>
     </div>
   </main>
 </div>
@@ -448,6 +484,11 @@
   var bmBarEl = document.getElementById('bmBar');
   var bmBarItemsEl = document.getElementById('bmBarItems');
   var bmListEl = document.getElementById('bmList');
+  // ブックマークの地図（2026-11-14 追加）。openFile や renderBookmarks から閉じたり描き直したりするので、最初に掴んでおく
+  var bmMapEl = document.getElementById('bmMap');
+  var bmMapSvg = document.getElementById('bmMapSvg');
+  var bmMapBtn = document.getElementById('bmMapBtn');
+  var bmMapHold = false;   // 自動の読み直しの間だけ true にする。その間は openFile が地図を閉じない
   var topTreeEl = document.getElementById('topTree');   // 上のツリー（2026-10-31 追加）
   var iframe = document.getElementById('viewer');
   var placeholder = document.getElementById('placeholder');
@@ -889,6 +930,7 @@
   }
 
   function openFile(winPath) {
+    if (!bmMapHold) closeBmMap();   // ブックマークの地図を開いていたら閉じて、本文を見せる（2026-11-14。自動の読み直しのときは閉じない）
     showFileTitle(winPath);
     urlInput.value = winPath;
     updateClearBtn();
@@ -1514,6 +1556,7 @@
   // git差分の表示（差分ボタン・ツリーの±ボタン共通）
   // ファイルならそのファイルだけ、フォルダならその配下だけの差分が返る
   function showDiff(p) {
+    closeBmMap();   // ブックマークの地図を開いていたら閉じて、差分を見せる
     showFileTitle(p, '差分: ');
     var msg = document.getElementById('saveMsg');
     msg.style.color = '#888'; msg.textContent = '差分を取得中...';
@@ -1603,7 +1646,8 @@
       setTimeout(function () { iframe.removeEventListener('load', restore); }, 5000);   // 枠を使わない表示のときに残さない
     }
     var st = treeEl ? treeEl.scrollTop : 0;
-    openFile(p);
+    bmMapHold = true;    // ブックマークの地図を見ている間の自動の読み直しでは、地図を閉じない（本文は地図の下で読み直す）
+    try { openFile(p); } finally { bmMapHold = false; }
     if (treeEl) treeEl.scrollTop = st;
     flashMsg('ファイルが書き換わったので読み直しました');
   }
@@ -2275,11 +2319,13 @@
       + ' style="padding-left:calc(8px + ' + (Math.max(0, depth - 1) * 1.3) + 'em);">'
       + (depth ? '<span class="bm-row-mark">└ </span>' : '')
       + '<span class="bm-row-name">' + esc(node.name) + '</span></div>';
-    node.kids.slice().sort(function (x, y) {
-      if (x.dir !== y.dir) return x.dir ? -1 : 1;
-      return x.name.localeCompare(y.name, 'ja');
-    }).forEach(function (k) { html += bmRowsHtml(k, depth + 1); });
+    node.kids.slice().sort(bmKidOrder).forEach(function (k) { html += bmRowsHtml(k, depth + 1); });
     return html;
+  }
+  // 同じ段の中の並び。フォルダを先に、名前の順。一覧と地図で同じ並びにする
+  function bmKidOrder(x, y) {
+    if (x.dir !== y.dir) return x.dir ? -1 : 1;
+    return x.name.localeCompare(y.name, 'ja');
   }
   function closeBmList() {
     if (!bmListKey) return;
@@ -2350,6 +2396,7 @@
     var a = getBm();
     if (!BM_ENABLED || !a.length) {
       closeBmList();
+      closeBmMap();   // 帯ごと消えるので、地図も閉じる
       bmBarEl.style.display = 'none'; bmBarItemsEl.innerHTML = ''; bmGroups = []; bmChipOfKey = {}; bmGoneCount = 0;
       return;
     }
@@ -2381,6 +2428,7 @@
         if (bmKey(bmGroups[i].path) === reopen) { openBmList(i); break; }
       }
     }
+    if (isBmMapOpen()) drawBmMap();   // 地図を開いている間に登録や場所の確かめが変わったら、見ている位置のまま描き直す
   }
   // 場所が見つからないブックマークを、まとめて外す。ツリーを読み直してから全部を確かめ直し、外すものの名前を見せて確かめてから外す
   function sweepGoneBms() {
@@ -2482,6 +2530,323 @@
     showCtxMenu(document, e.clientX, e.clientY, items);
   });
   urlInput.addEventListener('input', updateBmBtn);
+
+  // ===== ブックマークの地図（2026-11-14 本人指示「ビューワーからボタンを押すと、マップが開いて、ブックマークした内容が表示される」） =====
+  // 帯の左端の「地図」ボタンで、本文の欄の上に重ねて、ブックマークをマインドマップの形で出す。表示だけで、書き換えはしない。
+  // 中心が「ブックマーク」、1段目が帯のボタンと同じフォルダ（bmGroups）、その先が一覧と同じ木（途中のフォルダと、登録したもの）。
+  // 登録したものは ★ と青い字にし、場所が見つからないものは薄くして取り消し線を引く（一覧と同じ）。
+  // ノードを押すと、一覧の行と同じに開く。ファイルは開いて地図を閉じ、フォルダはツリーで見せて地図は開いたままにする。
+  // 地図はこの画面の中だけで描く（ブックマークは個人のパスなので、ほかのサーバーへ送らない）
+  var BMM_NS = 'http://www.w3.org/2000/svg';
+  var BMM_FONT = '"Segoe UI", "Meiryo", sans-serif';   // #bmMapSvg text の指定と同じにする（字の幅を測るため）
+  var BMM_LINE = '#666666';
+  var BMM_HGAP = 28, BMM_HGAP1 = 40, BMM_VGAP = 5, BMM_VGAP1 = 14, BMM_PAD = 24, BMM_TOP = 34;
+  var BMM_SCALE_MIN = 0.2, BMM_SCALE_MAX = 3;
+  // 地図は横に広がりやすく、全体を欄に合わせて縮めると字が小さくなる（28件で 71%、16px の字が 11px になった。2026-11-14 に確かめた）。
+  // そこで、長い名前は折り返す。折り返す幅は欄の大きさに合わせて選び、なるべく字を縮めずに全体を欄に収める（bmmLayoutToFit）。
+  // それでも収まらないときは、字が 14px より小さくならない所（87.5%）までしか縮めず、中心を真ん中にして出す。
+  // 「全体を表示」を押したときだけ、下限なしで全体を欄に合わせる
+  var BMM_WRAPS = [220, 190, 170, 150, 130, 110];
+  var BMM_FIT_MIN = 0.875;
+  var bmMapVpEl = document.getElementById('bmMapVp');
+  var bmMapEdgesEl = document.getElementById('bmMapEdges');
+  var bmMapNodesEl = document.getElementById('bmMapNodes');
+  var bmMapRoot = null;                   // 描いた木（中心から）
+  var bmMapView = { s: 1, x: 0, y: 0 };   // 倍率と位置
+  // 見る位置の決め方。'auto' は開いたとき（字の大きさを保つ）、'all' は「全体を表示」を押したあと（全体を合わせる）、
+  // 'moved' は自分で動かしたあと。'moved' でなければ、欄の大きさが変わったときに並べ直して合わせ直す
+  var bmMapMode = 'auto';
+  var bmmCtx = document.createElement('canvas').getContext('2d');
+
+  function isBmMapOpen() { return bmMapEl.style.display !== 'none'; }
+  // 帯のボタンの並び（bmGroups）から、地図の木を作る。同じ段の中の並びは一覧と同じ（bmKidOrder）
+  function bmMapTree() {
+    var total = 0;
+    function conv(node, depth) {
+      if (node.bm) total++;
+      return { name: node.name, path: node.path, dir: !!node.dir, bm: !!node.bm, dead: !!(node.bm && bmIsGone(node.bm)), depth: depth,
+        kids: node.kids.slice().sort(bmKidOrder).map(function (k) { return conv(k, depth + 1); }) };
+    }
+    var kids = bmGroups.map(function (g) { return conv(g.node, 1); });
+    return { name: 'ブックマーク', count: total, path: '', dir: true, bm: false, dead: false, depth: 0, kids: kids };
+  }
+  // 名前を、折ってよい所で分ける。英数字の続き（Playwright、20261004 など）は途中で折らない。
+  // 行の頭に置かない字（区切りの _ - . 、長音、小さいかな、閉じるかっこ）は前の字に付け、行の終わりに置かない字（開くかっこ）は次の字に付ける。
+  // 幅 maxW に入らないほど長い英数字の続きだけは、1字ずつに分ける
+  var BMM_NO_HEAD = '_-. 　ー〜～、。，．・：；！？）」』】〉》〕］｝)]}>ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ';
+  var BMM_NO_TAIL = '（「『【〈《〔［｛([{<';
+  function bmmAtoms(text, maxW) {
+    var atoms = [], glue = false;
+    (text.match(/[A-Za-z0-9]+|[\s\S]/gu) || []).forEach(function (p) {
+      if (atoms.length && (glue || BMM_NO_HEAD.indexOf(p) >= 0)) atoms[atoms.length - 1] += p;
+      else atoms.push(p);
+      glue = BMM_NO_TAIL.indexOf(p) >= 0;
+    });
+    var out = [];
+    atoms.forEach(function (a) {
+      if (bmmCtx.measureText(a).width <= maxW) out.push(a);
+      else Array.from(a).forEach(function (ch) { out.push(ch); });
+    });
+    return out;
+  }
+  // 名前を幅 maxW ほどで折り返す。行の数は、幅（maxW の1割増しまで）に詰めたときの最小の数にする。
+  // その行の数のまま、行の長さをそろえる（行の幅の2乗の和がいちばん小さい分け方を選ぶ。最後の行に1字だけ残さないため）
+  function bmmWrap(text, maxW) {
+    if (bmmCtx.measureText(text).width <= maxW) return [text];
+    var atoms = bmmAtoms(text, maxW), n = atoms.length, L = maxW * 1.1;
+    var w = atoms.map(function (a) { return bmmCtx.measureText(a).width; });
+    var K = 1, cur = 0, k, i, j;
+    w.forEach(function (x) { if (cur > 0 && cur + x > L) { K++; cur = x; } else cur += x; });
+    if (K === 1) return [text];
+    var cost = [], prev = [];
+    for (k = 0; k <= K; k++) { cost.push(new Array(n + 1).fill(Infinity)); prev.push(new Array(n + 1).fill(-1)); }
+    cost[0][0] = 0;
+    for (k = 1; k <= K; k++) {
+      for (i = 1; i <= n; i++) {
+        var sum = 0;
+        for (j = i - 1; j >= 0; j--) {   // この行に入れるのは atoms[j] から atoms[i-1] まで
+          sum += w[j];
+          if (sum > L) break;
+          if (cost[k - 1][j] + sum * sum < cost[k][i]) { cost[k][i] = cost[k - 1][j] + sum * sum; prev[k][i] = j; }
+        }
+      }
+    }
+    var lines = [], end = n;
+    for (k = K; k >= 1 && end >= 0; k--) { j = prev[k][end]; if (j < 0) { end = -1; break; } lines.unshift(atoms.slice(j, end).join('')); end = j; }
+    if (end === 0) return lines;
+    // そろえられなかったときは、前から順に詰めた行にする
+    lines = []; var line = '';
+    cur = 0;
+    atoms.forEach(function (a, x) {
+      if (cur > 0 && cur + w[x] > L) { lines.push(line); line = a; cur = w[x]; } else { line += a; cur += w[x]; }
+    });
+    lines.push(line);
+    return lines;
+  }
+  // 大きさ。中心と1段目は太字。登録したものは、字の前に ★ の幅を足す。中心は「ブックマーク」と件数の2行にして、横幅を取らない
+  function bmmMeasure(n, wrapW) {
+    n._fs = n.depth <= 1 ? 18 : 16;
+    n._bold = n.depth <= 1;
+    n._lh = Math.round(n._fs * 1.35);
+    bmmCtx.font = (n._bold ? 'bold ' : '') + n._fs + 'px ' + BMM_FONT;
+    if (n.depth === 0) {
+      n._lines = [n.name, n.count + '件'];
+      n._star = 0; n._px = 18; n._py = 9;
+      n._w = Math.ceil(bmmCtx.measureText(n.name).width + n._px * 2);
+    } else {
+      n._lines = bmmWrap(n.name, wrapW);
+      n._star = n.bm ? Math.round(n._fs * 1.2) : 0;
+      n._px = 6; n._py = 3;
+      var tw = 0;
+      n._lines.forEach(function (l) { tw = Math.max(tw, bmmCtx.measureText(l).width); });
+      n._w = Math.ceil(tw + n._star + n._px * 2);
+    }
+    n._h = n._lh * n._lines.length + n._py * 2;
+    n.kids.forEach(function (k) { bmmMeasure(k, wrapW); });
+  }
+  // 配置。中心から左右に枝を出し、子を縦に積む
+  function bmmGap(n) { return n.depth === 1 ? BMM_VGAP1 : BMM_VGAP; }
+  function bmmStack(list) { var s = 0; list.forEach(function (k, i) { s += k._sh + (i ? bmmGap(k) : 0); }); return s; }
+  function bmmHeights(n) { n.kids.forEach(bmmHeights); n._sh = Math.max(n._h, bmmStack(n.kids)); }
+  function bmmPlace(n, top, parent) {
+    var cy = top + n._sh / 2, gap = n.depth === 1 ? BMM_HGAP1 : BMM_HGAP;
+    n._x = n._side === 'right' ? parent._x + parent._w + gap : parent._x - gap - n._w;
+    n._y = cy - n._h / 2;
+    var y = cy - bmmStack(n.kids) / 2;
+    n.kids.forEach(function (k) { bmmPlace(k, y, n); y += k._sh + bmmGap(k); });
+  }
+  function bmmLayout(root, wrapW) {
+    bmmMeasure(root, wrapW);
+    root.kids.forEach(bmmHeights);
+    // 1段目は、上からいくつかを右、残りを左に置く。右を上から下へ、次に左を上から下へ読むと、帯のボタンの順になる。
+    // 分ける所は、左右の枝の高さの差がいちばん小さくなる所にする
+    var total = 0, acc = 0, cut = 0, bestDiff = Infinity;
+    root.kids.forEach(function (k) { total += k._sh; });
+    root.kids.forEach(function (k, i) {
+      acc += k._sh;
+      if (Math.abs(total - 2 * acc) < bestDiff) { bestDiff = Math.abs(total - 2 * acc); cut = i + 1; }
+    });
+    root.kids.forEach(function (k, i) {
+      var side = i < cut ? 'right' : 'left';
+      (function walk(n) { n._side = side; n.kids.forEach(walk); })(k);
+    });
+    root._side = 'right'; root._x = -root._w / 2; root._y = -root._h / 2;
+    ['right', 'left'].forEach(function (side) {
+      var list = root.kids.filter(function (k) { return k._side === side; });
+      var y = -bmmStack(list) / 2;
+      list.forEach(function (k) { bmmPlace(k, y, root); y += k._sh + bmmGap(k); });
+    });
+  }
+  function bmmBounds() {
+    var b = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    (function walk(n) {
+      b.x0 = Math.min(b.x0, n._x); b.x1 = Math.max(b.x1, n._x + n._w);
+      b.y0 = Math.min(b.y0, n._y); b.y1 = Math.max(b.y1, n._y + n._h);
+      n.kids.forEach(walk);
+    })(bmMapRoot);
+    return b;
+  }
+  // 地図の全体が欄に収まる倍率（上のボタンの行の分は空ける）
+  function bmmFitScale(b) {
+    return Math.min((bmMapEl.clientWidth - BMM_PAD * 2) / (b.x1 - b.x0), (bmMapEl.clientHeight - BMM_TOP - BMM_PAD * 2) / (b.y1 - b.y0));
+  }
+  // 欄の大きさに合わせて並べる。折り返す幅ごとに、全体が欄に収まる倍率（100% まで）を出し、いちばん大きく出せる幅を探す。
+  // 名前は折らないほうが読みやすいので、いちばん大きい倍率から 7% 以内なら、広いほうの幅を使う（下限の BMM_FIT_MIN は割らない）。
+  // 2026-11-14 のブックマーク28件（欄の幅 1370px）では、幅 190 で 94%、130 で 98%、110 で 100% だった。110 は名前が細かく折れて読みにくい
+  function bmmLayoutToFit() {
+    var pick = BMM_WRAPS[0];
+    if (bmMapEl.clientWidth && bmMapEl.clientHeight) {
+      var scales = BMM_WRAPS.map(function (w) {
+        bmmLayout(bmMapRoot, w);
+        return Math.min(bmmFitScale(bmmBounds()), 1);
+      });
+      var best = Math.max.apply(null, scales);
+      var need = best < BMM_FIT_MIN ? best : Math.max(best - 0.07, BMM_FIT_MIN);
+      for (var i = 0; i < BMM_WRAPS.length; i++) {
+        if (scales[i] >= need) { pick = BMM_WRAPS[i]; break; }
+      }
+      // 選んだ幅と、幅ごとの倍率を、欄に印として残す（検証で読む。表示には使わない）
+      bmMapEl.setAttribute('data-wrap', pick);
+      bmMapEl.setAttribute('data-fit', BMM_WRAPS.map(function (w, x) { return w + ':' + scales[x].toFixed(3); }).join(' '));
+    }
+    bmmLayout(bmMapRoot, pick);
+  }
+  // 描く
+  function bmmR(v) { return Math.round(v * 10) / 10; }
+  function bmmEl(tag, attrs, parent) {
+    var e = document.createElementNS(BMM_NS, tag);
+    Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    parent.appendChild(e);
+    return e;
+  }
+  function bmmDrawNode(n, parent) {
+    var right = n._side === 'right', stroke = n.depth === 1 ? 2.5 : 1.4;
+    if (parent) {
+      // 親の字の下の線の端から、子の字の下の線の端へ、曲線でつなぐ。中心だけは、横の真ん中から出す
+      var ax = right ? parent._x + parent._w : parent._x, ay = parent.depth === 0 ? parent._y + parent._h / 2 : parent._y + parent._h;
+      var bx = right ? n._x : n._x + n._w, by = n._y + n._h, mx = (ax + bx) / 2;
+      bmmEl('path', { d: 'M' + bmmR(ax) + ',' + bmmR(ay) + ' C' + bmmR(mx) + ',' + bmmR(ay) + ' ' + bmmR(mx) + ',' + bmmR(by) + ' ' + bmmR(bx) + ',' + bmmR(by),
+        fill: 'none', stroke: BMM_LINE, 'stroke-width': stroke, 'stroke-linecap': 'round' }, bmMapEdgesEl);
+    }
+    var cls = 'bmm-node' + (n.depth === 0 ? ' bmm-root' : '') + (n.bm ? ' is-bm' : '') + (n.dead ? ' bmm-dead' : '');
+    var g = bmmEl('g', { 'class': cls, transform: 'translate(' + bmmR(n._x) + ',' + bmmR(n._y) + ')' }, bmMapNodesEl);
+    if (n.depth > 0) { g.setAttribute('data-path', n.path); g.setAttribute('data-dir', n.dir ? '1' : '0'); }
+    bmmEl('rect', { 'class': 'bmm-hit', x: 0, y: 0, width: n._w, height: n._h, rx: n.depth === 0 ? bmmR(n._h / 2) : 4 }, g);
+    if (n.depth > 0) bmmEl('line', { x1: 0, y1: n._h, x2: n._w, y2: n._h, stroke: BMM_LINE, 'stroke-width': stroke, 'stroke-linecap': 'round' }, g);
+    if (n.bm) bmmEl('text', { 'class': 'bmm-star', x: n._px, y: bmmR(n._py + n._lh / 2), 'font-size': n._fs, 'dominant-baseline': 'central' }, g).textContent = '★';
+    var t = bmmEl('text', { 'class': 'bmm-name', 'font-size': n._fs, 'dominant-baseline': 'central' }, g);
+    if (n._bold) t.setAttribute('font-weight', 'bold');
+    if (n.depth === 0) t.setAttribute('text-anchor', 'middle');
+    n._lines.forEach(function (line, i) {
+      var ts = bmmEl('tspan', { x: n.depth === 0 ? bmmR(n._w / 2) : n._px + n._star, y: bmmR(n._py + n._lh * i + n._lh / 2) }, t);
+      if (n.depth === 0 && i === 1) { ts.setAttribute('class', 'bmm-count'); ts.setAttribute('font-size', 15); ts.setAttribute('font-weight', 'normal'); }
+      ts.textContent = line;
+    });
+    n.kids.forEach(function (k) { bmmDrawNode(k, n); });
+  }
+  // 木を作り直し、欄の大きさに合わせて並べて描く。見る位置と倍率は変えない
+  function drawBmMap() {
+    bmMapRoot = bmMapTree();
+    bmmLayoutToFit();
+    bmMapEdgesEl.textContent = ''; bmMapNodesEl.textContent = '';
+    bmmDrawNode(bmMapRoot, null);
+  }
+  // 見る位置と倍率
+  function bmmApply() {
+    bmMapVpEl.setAttribute('transform', 'translate(' + bmmR(bmMapView.x) + ',' + bmmR(bmMapView.y) + ') scale(' + bmMapView.s.toFixed(4) + ')');
+  }
+  // 地図を欄に合わせる。小さい地図は、字の大きさのまま（100%）で真ん中に置く。
+  // all でないときは、BMM_FIT_MIN より縮めない。収まらない分は欄の外にはみ出させ、中心を真ん中に置く（ドラッグかホイールで見る）
+  function fitBmMap(all) {
+    if (!bmMapRoot) return;
+    var w = bmMapEl.clientWidth, h = bmMapEl.clientHeight;
+    if (!w || !h) return;
+    var b = bmmBounds(), fit = bmmFitScale(b), cy = BMM_TOP + (h - BMM_TOP) / 2;
+    if (all || fit >= BMM_FIT_MIN) {
+      bmMapView.s = Math.max(BMM_SCALE_MIN, Math.min(fit, 1));
+      bmMapView.x = w / 2 - (b.x0 + b.x1) / 2 * bmMapView.s;
+      bmMapView.y = cy - (b.y0 + b.y1) / 2 * bmMapView.s;
+    } else {
+      bmMapView.s = BMM_FIT_MIN;
+      bmMapView.x = w / 2;   // 中心のノードの真ん中が、地図の座標の原点
+      bmMapView.y = cy;
+    }
+    bmmApply();
+  }
+  function openBmMap() {
+    if (!BM_ENABLED || !bmGroups.length) return;
+    closeBmList();
+    bmMapEl.style.display = 'block';
+    bmMapBtn.classList.add('on');
+    bmMapMode = 'auto';
+    drawBmMap();
+    fitBmMap(false);
+  }
+  function closeBmMap() {
+    if (!isBmMapOpen()) return;
+    bmMapEl.style.display = 'none';
+    bmMapBtn.classList.remove('on');
+    bmMapEdgesEl.textContent = ''; bmMapNodesEl.textContent = '';
+    bmMapRoot = null;
+  }
+  // ノードを押したとき。一覧の行と同じ動きにする。場所が見つからないものは開かずに知らせる
+  function bmmOpenNode(g) {
+    var p = g.getAttribute('data-path');
+    if (!p) return;   // 中心
+    if (g.classList.contains('bmm-dead')) {
+      flashMsg('場所が見つかりません（消したか、移したようです）。帯の一覧の右クリックで外せます: ' + baseName(p), '#c00');
+      return;
+    }
+    openBookmark(p, g.getAttribute('data-dir') === '1');   // ファイルは openFile が地図を閉じる。フォルダはツリーで見せ、地図は開いたまま
+  }
+  bmMapBtn.addEventListener('click', function () { if (isBmMapOpen()) closeBmMap(); else openBmMap(); });
+  document.getElementById('bmMapCloseBtn').addEventListener('click', closeBmMap);
+  // 「全体を表示」は、字が小さくなっても全体を欄に合わせる（並べ直してから合わせる）
+  document.getElementById('bmMapFitBtn').addEventListener('click', function () { bmMapMode = 'all'; drawBmMap(); fitBmMap(true); });
+  // ドラッグで地図を動かす。動かさずに離したら、押したノードを開く
+  var bmmDrag = null;
+  bmMapSvg.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    bmmDrag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, moved: false,
+      node: e.target.closest ? e.target.closest('.bmm-node') : null };
+    try { bmMapSvg.setPointerCapture(e.pointerId); } catch (x) { /* 取れなくても動く */ }
+  });
+  bmMapSvg.addEventListener('pointermove', function (e) {
+    if (!bmmDrag || e.pointerId !== bmmDrag.id) return;
+    if (!bmmDrag.moved) {
+      if (Math.abs(e.clientX - bmmDrag.sx) + Math.abs(e.clientY - bmmDrag.sy) < 5) return;
+      bmmDrag.moved = true; bmMapMode = 'moved';
+      bmMapSvg.classList.add('grabbing');
+    }
+    bmMapView.x += e.clientX - bmmDrag.lx; bmMapView.y += e.clientY - bmmDrag.ly;
+    bmmDrag.lx = e.clientX; bmmDrag.ly = e.clientY;
+    bmmApply();
+  });
+  function bmmRelease(e) {
+    if (!bmmDrag || e.pointerId !== bmmDrag.id) return;
+    var d = bmmDrag;
+    bmmDrag = null;
+    bmMapSvg.classList.remove('grabbing');
+    if (!d.moved && e.type === 'pointerup' && d.node) bmmOpenNode(d.node);
+  }
+  bmMapSvg.addEventListener('pointerup', bmmRelease);
+  bmMapSvg.addEventListener('pointercancel', bmmRelease);
+  // ホイールで、マウスの位置を中心に拡大と縮小
+  bmMapSvg.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var r = bmMapSvg.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    var unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    var s = Math.max(BMM_SCALE_MIN, Math.min(BMM_SCALE_MAX, bmMapView.s * Math.exp(-e.deltaY * unit * 0.0015))), k = s / bmMapView.s;
+    bmMapView.x = px - (px - bmMapView.x) * k; bmMapView.y = py - (py - bmMapView.y) * k; bmMapView.s = s;
+    bmMapMode = 'moved';
+    bmmApply();
+  }, { passive: false });
+  // 欄の大きさが変わったら（メニューの開け閉め、窓の大きさ、上の欄の高さ）、自分で動かしていなければ、並べ直して合わせ直す
+  if (window.ResizeObserver) new ResizeObserver(function () {
+    if (!isBmMapOpen() || bmMapMode === 'moved') return;
+    drawBmMap();
+    fitBmMap(bmMapMode === 'all');
+  }).observe(bmMapEl);
 
   // ===== ツリーとブックマーク欄の対応を知らせる（2026-09-21 本人指示） =====
   // 色分けはせず、マウスを乗せている間だけ、同じパスの行をもう片方の欄で光らせる（.xlink）
@@ -3155,6 +3520,7 @@
   }
   document.getElementById('editBtn').addEventListener('click', function () {
     if (!currentWin) return;
+    closeBmMap();   // ブックマークの地図を開いていたら閉じて、編集の欄を見せる
     // 元の生テキストを取得して textarea に入れる
     fetch(toUrl(currentWin) + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
       editor.value = t;
@@ -3422,6 +3788,7 @@
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
     if (!ctxCleanup && bmListKey) { closeBmList(); return; }           // ブックマークの一覧が開いている
+    if (!ctxCleanup && isBmMapOpen()) { closeBmMap(); return; }        // ブックマークの地図が開いている
     if (!ctxCleanup && isFindOpen()) { closeFind(); return; }          // 本文の中を探す欄が開いている
     if (isMaximized()) { setMaximized(false); return; }                // 最大化の間は、読み直さずに元の画面に戻す
     if (ctxCleanup) return;                                            // 右クリックのメニューが開いている
