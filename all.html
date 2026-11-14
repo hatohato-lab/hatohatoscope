@@ -1430,6 +1430,8 @@
     if (!revealedNow && currentWin) revealInTree(currentWin, true);   // 選んだ印を付け直すだけなので、上のツリーは動かさない
     // 裏の自動更新では、見ていた位置が飛ばないようスクロールを元に戻す
     if (keepScroll && treeEl && !revealedNow) treeEl.scrollTop = st;
+    // ?open= でフォルダを渡されていたら、ツリーが出来たここで、パス欄の Enter と同じ動きで開いて見せる（1回だけ）
+    if (openParamFolder) { var opf = openParamFolder; openParamFolder = ''; urlInput.value = opf; updateClearBtn(); openFromInput(); }
     // ツリーが変わったので、ブックマークの場所があるかを確かめ直して描く
     renderBookmarks();
     checkBms(true);
@@ -3772,16 +3774,26 @@
   document.getElementById('maxBtn').addEventListener('click', function () { setMaximized(true); });
   document.getElementById('restoreBtn').addEventListener('click', function () { setMaximized(false); });
 
-  // URLで直接ファイルを開く: all.html?open=<Windowsフルパス(encodeURIComponent)>
+  // URLで直接開く: all.html?open=<Windowsフルパス(encodeURIComponent)>
+  // ファイルは本文に開く。フォルダは、ツリーで開いて見せる（2026-11-14 追加。ほかの画面のリンクから、フォルダの場所も開けるように）。
+  // ファイルかどうかは、中身を読まない api/stat で先に確かめる。ファイルでなければ（フォルダ、見つからない、閲覧範囲の外）、
+  // パス欄に入れて Enter を押したときと同じ動きにする。ツリーを読む前はフォルダを探せないので、ツリーが出来てから見せる（renderTree）
+  var openParamFolder = '';
   (function () {
     var m = location.search.match(/[?&]open=([^&]+)/);
-    if (m) {
-      try {
-        var p = normPath(decodeURIComponent(m[1]));
-        openFile(p);
-        revealInTree(p);   // この時点ではツリー未読込で空振りするが、load() 完了後に合わせ直す
-      } catch (e) {}
+    if (!m) return;
+    var p = '';
+    try { p = normPath(decodeURIComponent(m[1])); } catch (e) { return; }
+    if (!p || !isAbsPath(p)) return;
+    function asFile() {
+      openFile(p);
+      revealInTree(p);   // この時点ではツリー未読込で空振りするが、load() 完了後に合わせ直す
     }
+    fetch('api/stat?p=' + encodeURIComponent(p) + '&t=' + Date.now()).then(function (r) {
+      if (r.ok) { asFile(); return; }
+      urlInput.value = p; updateClearBtn();
+      if (treeData) openFromInput(); else openParamFolder = p;
+    }).catch(asFile);   // 確かめられないときは、これまでどおりファイルとして開く
   })();
 
   // Esc でビューアごと読み直す（2026-09-27 本人指示。Ctrl+F5 と同じことを1キーで）。
