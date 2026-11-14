@@ -3838,6 +3838,42 @@
     });
   }
   function hideTip() { tipRow = null; if (tipEl) tipEl.style.display = 'none'; }
+  // 吹き出しを出す位置を決める。左メニューの行は、行の下ではなく、左メニューの右に少し離して出す
+  // （2026-11-14 本人指示「ちょっと離れた右側に出てほしい」。行の下に出すと、下に並ぶ行が隠れて見づらかったため）。
+  // 上の端は乗せた行にそろえ、画面の下にはみ出す分は上へずらす。境目のつまみ（メニュー非表示）には重ねない。
+  // 右に出す幅が無いとき（メニューを下に出しているとき、窓が狭いとき）と、帯のブックマークのボタンは、これまでどおり行の下に出す
+  var TIP_SIDE_GAP = 20;    // 左メニューの右の端からの間（px）
+  var TIP_SIDE_MIN = 240;   // 右に出すのに要る幅（px）。これより狭いと、折り返しが増えて読みにくい
+  var TIP_MAX_W = 640;      // 吹き出しの幅の上限（px）。CSS の #hoverTip の max-width と同じ値
+  // 左メニューの行なら、吹き出しを出す左の位置を返す。右に出せないときは null
+  function tipSideLeft(row) {
+    if (!menuEl || !menuEl.contains(row)) return null;
+    var tab = document.getElementById('menuTab');
+    var tabRight = tab ? tab.getBoundingClientRect().right : 0;   // つまみを出していないときは 0
+    var left = Math.round(Math.max(menuEl.getBoundingClientRect().right + TIP_SIDE_GAP, tabRight + 6));
+    return (window.innerWidth - left - 8 >= TIP_SIDE_MIN) ? left : null;
+  }
+  function placeTip(row) {
+    var r = row.getBoundingClientRect();
+    // 前に出した位置のままだと、画面の右の端で幅が縮んだまま測ることになるので、左上に置いてから測る
+    tipEl.style.maxWidth = '';
+    tipEl.style.left = '0px';
+    tipEl.style.top = '0px';
+    var side = tipSideLeft(row);
+    if (side !== null) {
+      // 幅が入りきらないときは折り返して高さが変わるので、幅を決めてから高さを測る
+      tipEl.style.maxWidth = Math.min(TIP_MAX_W, window.innerWidth - side - 8) + 'px';
+      tipEl.style.left = side + 'px';
+      tipEl.style.top = Math.max(4, Math.min(r.top, window.innerHeight - tipEl.offsetHeight - 8)) + 'px';
+      return;
+    }
+    // 行のすぐ下に出す。画面からはみ出すときは内側へ寄せる
+    var w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    var left = Math.min(r.left + 16, window.innerWidth - w - 8);
+    var top = (r.bottom + 4 + h > window.innerHeight) ? (r.top - h - 4) : (r.bottom + 4);
+    tipEl.style.left = Math.max(4, left) + 'px';
+    tipEl.style.top = Math.max(4, top) + 'px';
+  }
   document.addEventListener('mouseover', function (e) {
     var row = tipRowOf(e.target);
     if (row === tipRow) return;
@@ -3847,12 +3883,7 @@
     if (!text) { tipEl.style.display = 'none'; return; }
     renderTipSteps(tipEl, text);
     tipEl.style.display = 'block';
-    // 行のすぐ下に出す。画面からはみ出すときは内側へ寄せる
-    var r = row.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight;
-    var left = Math.min(r.left + 16, window.innerWidth - w - 8);
-    var top = (r.bottom + 4 + h > window.innerHeight) ? (r.top - h - 4) : (r.bottom + 4);
-    tipEl.style.left = Math.max(4, left) + 'px';
-    tipEl.style.top = Math.max(4, top) + 'px';
+    placeTip(row);
   });
   document.addEventListener('mouseleave', hideTip);
   document.addEventListener('mousedown', hideTip);
