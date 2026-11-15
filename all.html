@@ -756,13 +756,17 @@
       })
       .catch(function () { flashMsg('フォルダを作れませんでした', '#c00'); });
   }
-  // 「ここにファイルを作る」。中身は空で作る。拡張子が無ければ .md を付ける（2026-09-27 追加）
-  function makeFile(parent) {
-    var name = window.prompt('「' + baseName(parent) + '」の中に作るファイルの名前を入れてください（拡張子が無ければ .md を付けます）', '');
+  // 「ここにファイルを作る」。中身は空で作る。拡張子が無ければ .md を付ける（2026-09-27 追加）。
+  // mm が true なら、「ここにマインドマップを作る」。名前の終わりに .mm が無ければ付ける（2026-11-15 追加。
+  // 空の .mm をどう開くかは、設定に書いた編集画面のページが決める）
+  function makeFile(parent, mm) {
+    var name = window.prompt(mm ? '「' + baseName(parent) + '」の中に作るマインドマップの名前を入れてください（終わりに .mm を付けます）'
+      : '「' + baseName(parent) + '」の中に作るファイルの名前を入れてください（拡張子が無ければ .md を付けます）', '');
     if (name === null) return;
     name = name.trim();
     if (!name) { flashMsg('ファイル名が空です', '#c00'); return; }
-    if (name.indexOf('.') < 0) name += '.md';
+    if (mm) { if (!/\.mm$/i.test(name)) name += '.mm'; }
+    else if (name.indexOf('.') < 0) name += '.md';
     var body = new URLSearchParams();
     body.append('p', parent);
     body.append('name', name);
@@ -854,6 +858,8 @@
       if (isFolder) {
         items.push({ label: '📁 ここにフォルダを作る', run: function () { makeFolder(p); } });
         items.push({ label: '📄 ここにファイルを作る', run: function () { makeFile(p); } });
+        // マインドマップの編集画面のページが、設定にあるときだけ出す
+        if (MM_EDITOR) items.push({ label: '🧠 ここにマインドマップを作る', run: function () { makeFile(p, true); } });
       }
       items.push({ label: '✏ 名前を変える：' + baseName(p), run: function () { renamePath(p, isFolder); } });
     }
