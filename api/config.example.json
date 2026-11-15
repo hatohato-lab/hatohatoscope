@@ -18,5 +18,7 @@
   "maxDepth": 6,
   "ftsExcludeFolders": [],
   "denyFiles": [],
-  "port": 8765
+  "port": 8765,
+  "_comment_mmEditor": "マインドマップ（.mm）を開く編集画面のページ（HTML）の絶対パス。空なら、.mm は中身（XML）を字で出す。ページは閲覧範囲の中に置く。",
+  "mmEditor": ""
 }

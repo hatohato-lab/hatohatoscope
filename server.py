@@ -349,10 +349,28 @@ def stat_file():
     return Response(json.dumps({'mtime': st.st_mtime, 'size': st.st_size}),
                     mimetype='application/json', headers={'Cache-Control': 'no-store'})
 
+@app.route('/api/settings')
+def settings():
+    """画面が起動のときに読む設定（2026-11-15 追加）。いまは、マインドマップ（.mm）を開く編集画面のページの場所だけを返す。
+
+    config.json の mmEditor に、編集画面のページ（HTML）の絶対パスを書く。
+    閲覧範囲の中にある、実在するファイルのときだけ返す（serve が配れるページだけを、画面に教える）。
+    """
+    out = {}
+    config = load_config()
+    p = config.get('mmEditor') if config else None
+    if isinstance(p, str) and p:
+        roots = allowed_roots(config)
+        real = os.path.realpath(p)
+        if under_allowed(norm(p), roots) and os.path.isfile(real) and any(norm(real).startswith(ar + '/') for ar in roots):
+            out['mmEditor'] = p.replace('/', '\\')
+    return Response(json.dumps(out, ensure_ascii=False), mimetype='application/json', headers={'Cache-Control': 'no-store'})
+
 # ---------------------------------------------------------------- 保存
 
 SAVE_EXTS = {'md', 'txt', 'json', 'py', 'php', 'js', 'css', 'html', 'htm', 'xml', 'csv',
-             'yml', 'yaml', 'sql', 'sh', 'bat', 'puml', 'ini', 'env', 'gitignore'}
+             'yml', 'yaml', 'sql', 'sh', 'bat', 'puml', 'ini', 'env', 'gitignore',
+             'mm'}   # FreeMind のマインドマップ（2026-11-15 追加。マインドマップの編集画面が、同じ .mm に書き戻すため）
 
 
 @app.route('/save', methods=['POST'])

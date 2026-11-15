@@ -458,7 +458,7 @@
 
   // 画像（枠の幅に収めて表示する。2026-09-19 追加：.jpeg 等が灰色で開けなかったため）
   var IMG_EXT = ['.png','.jpg','.jpeg','.gif','.webp','.bmp','.ico'];
-  var VIEW_EXT = ['.html','.htm','.md','.pdf','.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.ps1','.yml','.yaml','.svg','.puml','.diff','.patch',
+  var VIEW_EXT = ['.html','.htm','.md','.pdf','.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.ps1','.yml','.yaml','.svg','.puml','.mm','.diff','.patch',
                   '.gitignore','.gitattributes','.editorconfig','.ini','.toml','.conf','.cfg','.log'].concat(IMG_EXT);
   var TEXT_EXT = ['.php','.py','.js','.css','.json','.xml','.txt','.csv','.sql','.sh','.bat','.ps1','.yml','.yaml',
                   '.gitignore','.gitattributes','.editorconfig','.ini','.toml','.conf','.cfg','.log'];
@@ -517,6 +517,14 @@
   // 2026-11-03 から、パス欄の下の帯に出す（本人指示。前は左のメニューの上の欄）。止めるときはここを false にする
   // （帯・上部の★ボタン・右クリックの登録・行頭の c の黄色が消える。登録済みの一覧 api/bookmarks.json は残る）
   var BM_ENABLED = true;
+  // マインドマップ（.mm）を開く編集画面のページの場所（2026-11-15 私の指示「ローカルサーバーで、マインドマップは管理したい」）。
+  // 設定（api/config.json の mmEditor）に書いた場所を、起動のときに api/settings から読む。無ければ空のままで、.mm は中身（XML）を字で出す。
+  // 編集画面のプログラムは、このリポジトリには入っていない（使う人が、自分の編集画面のページを置いて、設定に場所を書く）
+  var MM_EDITOR = '';
+  var settingsReady = fetch('api/settings?t=' + Date.now())
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) { if (d && typeof d.mmEditor === 'string') MM_EDITOR = d.mmEditor; })
+    .catch(function () {});
 
   function getOpen() { try { return JSON.parse(localStorage.getItem(STORAGE)) || []; } catch (e) { return []; } }
   function setOpen(a) { try { localStorage.setItem(STORAGE, JSON.stringify(a)); } catch (e) {} }
@@ -995,6 +1003,23 @@
       iframe.src = url + '&t=' + Date.now();
       return;
     }
+    if (ext === '.mm') {
+      // FreeMind のマインドマップ。編集画面のページが設定にあれば、そのページを本文の欄に出して、開く .mm の場所を file で渡す。
+      // 無ければ、中身（XML）を字で出す
+      settingsReady.then(function () {
+        if (winPath !== currentWin) return;   // 設定を待っている間に、別のファイルを開いた
+        if (MM_EDITOR) {
+          iframe.removeAttribute('srcdoc');
+          iframe.src = toUrl(MM_EDITOR) + '&file=' + encodeURIComponent(winPath) + '&t=' + Date.now();
+          return;
+        }
+        fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
+          iframe.removeAttribute('src');
+          iframe.srcdoc = markDoc(textHtml(t, 'マインドマップの編集画面が設定されていないので、中身（XML）を表示しています。', 'xml'), winPath);
+        }).catch(function () { iframe.srcdoc = markDoc(errHtml('ファイル読込エラー'), winPath); });
+      });
+      return;
+    }
     if (ext === '.md') {
       fetch(url + '&t=' + Date.now()).then(function (r) { return r.text(); }).then(function (t) {
         iframe.removeAttribute('src');
@@ -1285,6 +1310,22 @@
     openFile(p);
     revealInTree(p);
   });
+  // マインドマップの編集画面（本文の枠の中のページ）からの「この場所を開いて」の合図（2026-11-15 追加）。
+  // 場所は、絶対パスをそのまま受け取る（# や % の入った名前も、そのまま開けるように）。ファイルは本文に開き、フォルダはツリーで開いて見せる。
+  // 本文の枠の中の、同じサイトのページからの合図だけを受ける
+  window.addEventListener('message', function (ev) {
+    var d = ev.data;
+    if (!d || d.t !== 'hhscopeOpenPath' || typeof d.path !== 'string') return;
+    if (ev.source !== iframe.contentWindow || ev.origin !== location.origin) return;
+    var p = normPath(d.path);
+    if (!p || !isAbsPath(p)) return;
+    fetch('api/stat?p=' + encodeURIComponent(p) + '&t=' + Date.now()).then(function (r) {
+      if (r.ok) { openFile(p); revealInTree(p); return; }
+      urlInput.value = p;
+      updateClearBtn();
+      openFromInput();
+    }).catch(function () { openFile(p); revealInTree(p); });
+  });
 
   // serve 経由で表示したHTML（同一オリジン）にも、読み込み後にリンク振り分けを仕込む。
   // 外部URLは新しいタブ、ファイルへの相対リンクはビューア自身で開く
@@ -1335,9 +1376,23 @@
     }
     var mm = href.match(/\/serve\?(?:[^#]*&)?p=([^&#]*)/);
     if (!mm) return null;
-    try { return { p: decodeURIComponent(mm[1]), prefix: '' }; } catch (e) { return null; }
+    try {
+      var p = decodeURIComponent(mm[1]);
+      // マインドマップの編集画面のページ（MM_EDITOR）は、開いている .mm（file）のほうを、いま出ている文書として扱う
+      var f = href.match(/[?&]file=([^&#]*)/);
+      if (f && MM_EDITOR && samePath(p, MM_EDITOR)) p = decodeURIComponent(f[1]);
+      return { p: p, prefix: '' };
+    } catch (e) { return null; }
   }
   function samePath(a, b) { return String(a || '').toLowerCase() === String(b || '').toLowerCase(); }
+  // 本文の枠に出ているページ（doc）が、マインドマップの編集画面のページ（MM_EDITOR）か
+  function isMmEditorDoc(doc) {
+    if (!MM_EDITOR || !doc) return false;
+    try {
+      var m = String(doc.location.href).match(/\/serve\?(?:[^#]*&)?p=([^&#]*)/);
+      return !!m && samePath(decodeURIComponent(m[1]), MM_EDITOR);
+    } catch (e) { return false; }
+  }
 
   // このビューア自身（mydocs\all.html）かどうか
   function isSelfViewer(winPath) {
@@ -3178,11 +3233,18 @@
         return;
       }
       if (!isF1 && !isCtrlB && !isEsc) return;
+      // マインドマップの編集画面は、Esc を自分で使う（選択を外す、検索の欄から地図へ戻る、入力をやめる）。
+      // 編集画面が使った Esc（preventDefault 済み）と、日本語の変換を取り消す Esc は、外側へ投げ直さない（2026-11-15）
+      var fromMm = isEsc && isMmEditorDoc(doc);
+      if (fromMm && (e.defaultPrevented || e.isComposing || e.keyCode === 229)) return;
       e.preventDefault();   // ブラウザ既定（F1のヘルプ等）を枠の中で止める
-      document.dispatchEvent(new KeyboardEvent('keydown', {
+      var again = new KeyboardEvent('keydown', {
         key: e.key, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, shiftKey: e.shiftKey,
         bubbles: true, cancelable: true
-      }));
+      });
+      // 編集画面が使わなかった Esc は、開いているもの（探す欄、最大化など）を閉じるだけにして、ビューアごとの読み直しはしない（下の Esc の処理）
+      again.hhFromMmEditor = fromMm;
+      document.dispatchEvent(again);
     });
     // 本文の上で右クリック → クリップボードのパスを開く（2026-09-19 追加。下の openFromClipboard を参照）。
     // 右ボタンを0.5秒押し続けたときは、離したときのこの知らせを受け流す（長押しは本文の中を探す。2026-11-04）
@@ -4003,6 +4065,7 @@
     if (editor && editor.style.display !== 'none') return;             // 編集中
     var t = e.target, tag = (t && t.tagName) ? t.tagName.toLowerCase() : '';
     if (tag === 'input' || tag === 'textarea') return;
+    if (e.hhFromMmEditor) return;   // マインドマップの編集画面の中で押した Esc では、読み直さない（直している途中の地図を失わないため。2026-11-15）
     hardReloadViewer();
   });
 
