@@ -298,6 +298,10 @@
     background: #eee; border: 1px solid #bbb; border-radius: 3px; }
   #bmMapBtn:hover, #bmMapBtn.on { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   #bmMapBtn.on { font-weight: bold; }
+  /* ブックマークの全体を、マインドマップの画面に地図で出すボタン（2026-11-14 私の指示）。「地図」ボタンの右に、同じ形で置く */
+  #bmSendBtn { flex: 0 0 auto; align-self: flex-start; margin: 1px 6px 1px 0; padding: 2px 8px; font-size: 14px; line-height: 1.3; cursor: pointer;
+    background: #eee; border: 1px solid #bbb; border-radius: 3px; }
+  #bmSendBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   /* 本文の枠（iframe）や目次の上に重ねる。本文の中を探す欄（z-index 45）よりは下、ブックマークの一覧（60）よりも下 */
   #bmMap { position: absolute; left: 0; top: 0; right: 0; bottom: 0; z-index: 40; background: #fff; overflow: hidden; }
   .bmm-tools { position: absolute; left: 8px; top: 6px; right: 8px; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
@@ -314,6 +318,8 @@
   .bmm-node.bmm-root .bmm-hit, .bmm-node.bmm-root:hover .bmm-hit { fill: #fff; fill-opacity: 1; stroke: #333; stroke-width: 2px; }
   #bmMapSvg .bmm-node.is-bm .bmm-name { fill: #1a4f8a; }
   #bmMapSvg .bmm-star { fill: #e8a11a; }
+  /* ファイルの種類の絵（2026-11-14 私の指示）。★ の右、名前の左に置く。色つきの絵の字の形で出す */
+  #bmMapSvg .bmm-icon { font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
   .bmm-node.bmm-dead { opacity: .55; }
   .bmm-node.bmm-dead .bmm-name { text-decoration: line-through; }
   /* ===== 選んだ場所の階層（2026-10-31 本人指示。2026-11-03 本人指示で道筋だけにした） =====
@@ -401,6 +407,8 @@
     <!-- ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） -->
     <div class="bm-bar" id="bmBar" style="display:none;">
       <button id="bmMapBtn" title="ブックマークを地図（マインドマップの形）で見る / 閉じる">地図</button>
+      <!-- ブックマークの全体を、マインドマップの画面に地図で出すボタン（2026-11-14 私の指示。地図は、ブラウザの中でタブからタブへ渡し、サーバーには送らない） -->
+      <button id="bmSendBtn" title="ブックマークの全体を、マインドマップの画面に地図で出す（どこにも保存しない、一時の地図。開く先は、上の段の 🧠 で登録した URL）">🧠</button>
       <div class="bm-bar-items" id="bmBarItems"></div>
       <div id="bmList" style="display:none;"></div>
     </div>
@@ -542,7 +550,11 @@
     if (isDir) return '📁';
     var m = { '.md':'📝', '.html':'🌐', '.htm':'🌐', '.pdf':'📕', '.php':'🐘',
       '.py':'🐍', '.js':'📜', '.css':'🎨', '.json':'🗂️', '.txt':'📃',
-      '.csv':'📊', '.svg':'🖼️', '.puml':'📐', '.png':'🖼️', '.jpg':'🖼️', '.jpeg':'🖼️', '.gif':'🖼️' };
+      '.csv':'📊', '.svg':'🖼️', '.puml':'📐', '.png':'🖼️', '.jpg':'🖼️', '.jpeg':'🖼️', '.gif':'🖼️',
+      // ブックマークの地図でファイルの種類が分かるように、2026-11-14 に種類を足した（私の指示「ファイルごとの適切なアイコンをデザインして付けて」）
+      '.doc':'📝', '.docx':'📝', '.log':'📃', '.tsv':'📊', '.xls':'📊', '.xlsx':'📊', '.webp':'🖼️', '.bmp':'🖼️', '.ico':'🖼️',
+      '.mm':'🧠', '.ts':'📜', '.yml':'🗂️', '.yaml':'🗂️', '.xml':'🗂️', '.zip':'📦', '.7z':'📦',
+      '.mp3':'🎵', '.wav':'🎵', '.m4a':'🎵', '.mp4':'🎬', '.mov':'🎬' };
     return m[extOf(name)] || '📄';
   }
 
@@ -2547,6 +2559,7 @@
   // 地図はこの画面の中だけで描く（ブックマークは個人のパスなので、ほかのサーバーへ送らない）
   var BMM_NS = 'http://www.w3.org/2000/svg';
   var BMM_FONT = '"Segoe UI", "Meiryo", sans-serif';   // #bmMapSvg text の指定と同じにする（字の幅を測るため）
+  var BMM_ICON_FONT = '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';   // .bmm-icon の指定と同じにする（絵の幅を測るため）
   var BMM_LINE = '#666666';
   var BMM_HGAP = 28, BMM_HGAP1 = 40, BMM_VGAP = 5, BMM_VGAP1 = 14, BMM_PAD = 24, BMM_TOP = 34;
   var BMM_SCALE_MIN = 0.2, BMM_SCALE_MAX = 3;
@@ -2637,11 +2650,18 @@
     }
     return atoms;   // 部品の数が行の数に足りないとき（切れ目の無い名前）。部品ごとに1行
   }
-  // 大きさ。中心と1段目は太字。登録したものは、字の前に ★ の幅を足す。中心は「ブックマーク」と件数の2行にして、横幅を取らない
+  // 大きさ。中心と1段目は太字。登録したものは、字の前に ★ の幅を足す。中心は「ブックマーク」と件数の2行にして、横幅を取らない。
+  // 中心のほかは、名前の前に、ファイルの種類の絵（iconOf。フォルダは 📁、HTML は 🌐 など）の幅も足す（2026-11-14 私の指示）
   function bmmMeasure(n) {
     n._fs = n.depth <= 1 ? 18 : 16;
     n._bold = n.depth <= 1;
     n._lh = Math.round(n._fs * 1.35);
+    n._ic = n.depth === 0 ? '' : iconOf(n.name, n.dir);
+    n._icon = 0;
+    if (n._ic) {
+      bmmCtx.font = n._fs + 'px ' + BMM_ICON_FONT;
+      n._icon = Math.ceil(bmmCtx.measureText(n._ic).width) + 4;   // 絵の幅と、名前とのすき間
+    }
     bmmCtx.font = (n._bold ? 'bold ' : '') + n._fs + 'px ' + BMM_FONT;
     if (n.depth === 0) {
       n._lines = [n.name, n.count + '件'];
@@ -2653,7 +2673,7 @@
       n._px = 6; n._py = 3;
       var tw = 0;
       n._lines.forEach(function (l) { tw = Math.max(tw, bmmCtx.measureText(l).width); });
-      n._w = Math.ceil(tw + n._star + n._px * 2);
+      n._w = Math.ceil(tw + n._star + n._icon + n._px * 2);
     }
     n._h = n._lh * n._lines.length + n._py * 2;
     n.kids.forEach(bmmMeasure);
@@ -2747,11 +2767,12 @@
     bmmEl('rect', { 'class': 'bmm-hit', x: 0, y: 0, width: n._w, height: n._h, rx: n.depth === 0 ? bmmR(n._h / 2) : 4 }, g);
     if (n.depth > 0) bmmEl('line', { x1: 0, y1: n._h, x2: n._w, y2: n._h, stroke: BMM_LINE, 'stroke-width': stroke, 'stroke-linecap': 'round' }, g);
     if (n.bm) bmmEl('text', { 'class': 'bmm-star', x: n._px, y: bmmR(n._py + n._lh / 2), 'font-size': n._fs, 'dominant-baseline': 'central' }, g).textContent = '★';
+    if (n._ic) bmmEl('text', { 'class': 'bmm-icon', x: n._px + n._star, y: bmmR(n._py + n._lh / 2), 'font-size': n._fs, 'dominant-baseline': 'central' }, g).textContent = n._ic;
     var t = bmmEl('text', { 'class': 'bmm-name', 'font-size': n._fs, 'dominant-baseline': 'central' }, g);
     if (n._bold) t.setAttribute('font-weight', 'bold');
     if (n.depth === 0) t.setAttribute('text-anchor', 'middle');
     n._lines.forEach(function (line, i) {
-      var ts = bmmEl('tspan', { x: n.depth === 0 ? bmmR(n._w / 2) : n._px + n._star, y: bmmR(n._py + n._lh * i + n._lh / 2) }, t);
+      var ts = bmmEl('tspan', { x: n.depth === 0 ? bmmR(n._w / 2) : n._px + n._star + n._icon, y: bmmR(n._py + n._lh * i + n._lh / 2) }, t);
       if (n.depth === 0 && i === 1) { ts.setAttribute('class', 'bmm-count'); ts.setAttribute('font-size', 15); ts.setAttribute('font-weight', 'normal'); }
       ts.textContent = line;
     });
@@ -3858,6 +3879,88 @@
     if (url && url !== had) flashMsg('マインドマップの URL を登録しました');
   });
   paintMindmapBtn();
+
+  // ===== ブックマークの全体を、マインドマップの画面に地図で出す（2026-11-14 私の指示「ブックマークの上にボタンが付いていて、そのボタンを押すと、ブックマークフォルダ全体のプロットを、マインドマップ画面で出す」） =====
+  // 帯の 🧠 ボタンを押すと、上の段の 🧠 で登録した URL（マインドマップの画面）を別のタブに開き、
+  // ブックマークの地図（帯の「地図」と同じ木）を FreeMind の形（.mm の XML）にして、そのタブへ渡す。
+  // ブックマークの名前には、人に見せたくないフォルダの名前が入ることがあるので、地図はどのサーバーにも送らない。
+  // ブラウザの中で、タブからタブへ渡す（postMessage）。手順は次の3つ。
+  //   1. 登録した URL の # を「hatohatoscope-map=鍵」にして、タブを開く。鍵は、押すたびに作る乱数（# はサーバーに届かない）
+  //   2. 開いた画面が、この画面へ { type: 'hatohatoscope-map-request', key: 鍵 } を送る
+  //   3. この画面が、{ type: 'hatohatoscope-map', key: 鍵, title: 'ブックマーク', mm: 地図の XML } を返す
+  // 返すのは、このボタンで開いたタブから来た、登録した URL と同じサイトの、同じ鍵の頼みだけ。
+  // マインドマップの画面を開くタブ（MINDMAP_WIN）とは別の名前のタブにして、そこで編集している地図を追い出さない
+  var BM_SEND_WIN = 'hatohatoscopeBookmarkMap';
+  var BM_SEND_MARK = 'hatohatoscope-map';
+  var bmSend = null;   // このボタンで最後に開いたタブ。{ win, origin, key }
+  function bmSendKey() {
+    var a = new Uint8Array(16), s = '';
+    window.crypto.getRandomValues(a);
+    for (var i = 0; i < a.length; i++) s += ('0' + a[i].toString(16)).slice(-2);
+    return s;
+  }
+  // XML に入れられない字（制御文字と、対になっていないサロゲート）を落とす
+  function bmSendClean(v) {
+    return String(v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, '')
+      .replace(/[\ud800-\udbff][\udc00-\udfff]|[\ud800-\udfff]/g, function (m) { return m.length === 2 ? m : ''; });
+  }
+  // FreeMind のリンクの形（file:/C:/…。日本語と空白は % の形）にする。フォルダは終わりに / を付けて、ファイルと見分けられるようにする。
+  // ドライブの字で始まらない場所（共有の場所など）は、そのまま渡す
+  function bmSendLink(path, isDir) {
+    var p = String(path).replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!/^[A-Za-z]:\//.test(p)) return String(path);
+    return 'file:/' + p.split('/').map(function (seg, i) { return i === 0 ? seg : encodeURIComponent(seg); }).join('/') + (isDir ? '/' : '');
+  }
+  // ブックマークの地図の木（bmMapTree）を、FreeMind の形の XML にする。中心は「ブックマーク（件数）」。
+  // 登録したものは名前の前に ★ を付け、場所が見つからないものはノートに書く
+  function bmSendXml() {
+    var doc = document.implementation.createDocument(null, 'map', null);
+    doc.documentElement.setAttribute('version', '1.0.1');
+    (function walk(n, parent) {
+      var el = doc.createElement('node');
+      el.setAttribute('TEXT', bmSendClean(n.depth === 0 ? n.name + '（' + n.count + '件）' : (n.bm ? '★ ' : '') + n.name));
+      if (n.path) el.setAttribute('LINK', bmSendClean(bmSendLink(n.path, n.dir)));
+      if (n.dead) {
+        var rc = doc.createElement('richcontent'), html = doc.createElement('html'), body = doc.createElement('body'), p = doc.createElement('p');
+        rc.setAttribute('TYPE', 'NOTE');
+        p.textContent = '場所が見つかりません（消したか、移したようです）';
+        body.appendChild(p); html.appendChild(body); rc.appendChild(html); el.appendChild(rc);
+      }
+      parent.appendChild(el);
+      n.kids.forEach(function (k) { walk(k, el); });
+    })(bmMapTree(), doc.documentElement);
+    return new XMLSerializer().serializeToString(doc);
+  }
+  document.getElementById('bmSendBtn').addEventListener('click', function () {
+    document.getElementById('saveMsg').textContent = '';   // 前の知らせが残っていたら消す
+    if (!BM_ENABLED || !bmGroups.length) return;
+    var url = getMindmapUrl(), asked = false;
+    if (!url) {
+      url = askMindmapUrl();
+      asked = true;
+      if (!url) return;
+    }
+    var u = new URL(url), key = bmSendKey(), w = null;
+    u.hash = BM_SEND_MARK + '=' + key;
+    try { w = window.open(u.href, BM_SEND_WIN); } catch (e) { w = null; }
+    if (!w) {
+      // URL を入れるのに時間がかかると、ブラウザは「押した直後」と見なさず、タブを開かせないことがある
+      flashMsg(asked ? 'URL を登録しました。もう一度押すと、地図を出します' : 'タブを開けませんでした。もう一度押してください', asked ? '' : '#c00');
+      return;
+    }
+    bmSend = { win: w, origin: u.origin, key: key };
+    try { w.focus(); } catch (e) { /* 前に出せなくても、開いてはいる */ }
+  });
+  // 開いた画面からの頼みに、地図を返す。地図は頼まれたときに作るので、開いた画面を読み直すと、そのときのブックマークが出る
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!bmSend || e.source !== bmSend.win || e.origin !== bmSend.origin) return;
+    if (!d || d.type !== BM_SEND_MARK + '-request' || d.key !== bmSend.key) return;
+    if (!BM_ENABLED || !bmGroups.length) return;
+    try {
+      bmSend.win.postMessage({ type: BM_SEND_MARK, key: bmSend.key, title: 'ブックマーク', mm: bmSendXml() }, bmSend.origin);
+    } catch (x) { /* 渡せなかったときは、開いた画面が知らせる */ }
+  });
 
   // URLで直接開く: all.html?open=<Windowsフルパス(encodeURIComponent)>
   // ファイルは本文に開く。フォルダは、ツリーで開いて見せる（2026-11-14 追加。ほかの画面のリンクから、フォルダの場所も開けるように）。
