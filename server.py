@@ -350,12 +350,29 @@ def stat_file():
     return Response(json.dumps({'mtime': st.st_mtime, 'size': st.st_size}),
                     mimetype='application/json', headers={'Cache-Control': 'no-store'})
 
+def bookmark_map_ok(config, p):
+    """ブックマークの地図を書く場所（config.json の bookmarkMapFile）として、使えるか（2026-11-15 追加）。
+
+    作業フォルダの中の、実在するフォルダの中の .mm だけを通す（newfile と save が受ける場所と、同じ決まり）。
+    """
+    root_n = norm(config['root'])
+    parent, name = os.path.split(p)
+    if len(name) <= 3 or len(name) > 200 or not name.lower().endswith('.mm') or any(ch in BAD_NAME_CHARS for ch in name):
+        return False
+    if not norm(p).startswith(root_n + '/') or not os.path.isdir(parent) or os.path.isdir(p):
+        return False
+    real_n = norm(os.path.realpath(parent))   # リンクや .. で外へ抜ける場所は、通さない
+    return real_n == root_n or real_n.startswith(root_n + '/')
+
+
 @app.route('/api/settings')
 def settings():
-    """画面が起動のときに読む設定（2026-11-15 追加）。いまは、マインドマップ（.mm）を開く編集画面のページの場所だけを返す。
+    """画面が起動のときに読む設定（2026-11-15 追加）。次の2つを返す。
 
-    config.json の mmEditor に、編集画面のページ（HTML）の絶対パスを書く。
-    閲覧範囲の中にある、実在するファイルのときだけ返す（serve が配れるページだけを、画面に教える）。
+    mmEditor         マインドマップ（.mm）を開く編集画面のページ（HTML）の絶対パス。
+                     閲覧範囲の中にある、実在するファイルのときだけ返す（serve が配れるページだけを、画面に教える）。
+    bookmarkMapFile  ブックマークの帯の 🧠 ボタンが、ブックマークの地図を書く .mm の絶対パス（2026-11-15 追加）。
+                     作業フォルダの中の、実在するフォルダの中の .mm のときだけ返す（bookmark_map_ok）。
     """
     out = {}
     config = load_config()
@@ -365,6 +382,9 @@ def settings():
         real = os.path.realpath(p)
         if under_allowed(norm(p), roots) and os.path.isfile(real) and any(norm(real).startswith(ar + '/') for ar in roots):
             out['mmEditor'] = p.replace('/', '\\')
+    p = config.get('bookmarkMapFile') if config else None
+    if isinstance(p, str) and p and bookmark_map_ok(config, p):
+        out['bookmarkMapFile'] = p.replace('/', '\\')
     return Response(json.dumps(out, ensure_ascii=False), mimetype='application/json', headers={'Cache-Control': 'no-store'})
 
 # ---------------------------------------------------------------- 保存

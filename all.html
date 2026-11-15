@@ -521,10 +521,18 @@
   // 設定（api/config.json の mmEditor）に書いた場所を、起動のときに api/settings から読む。無ければ空のままで、.mm は中身（XML）を字で出す。
   // 編集画面のプログラムは、このリポジトリには入っていない（使う人が、自分の編集画面のページを置いて、設定に場所を書く）
   var MM_EDITOR = '';
+  // ブックマークの地図を書く .mm の場所（設定の bookmarkMapFile。2026-11-15 追加）。あれば、ブックマークの帯の 🧠 ボタンは、
+  // 地図を別のタブへ渡す代わりに、このファイルに書いて、この画面で開く（下の bmFileMake）
+  var BM_MAP_FILE = '';
+  var settingsLoaded = false;   // 設定を読み終えたか（読めなかったときも、true にする）
   var settingsReady = fetch('api/settings?t=' + Date.now())
     .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (d) { if (d && typeof d.mmEditor === 'string') MM_EDITOR = d.mmEditor; })
-    .catch(function () {});
+    .then(function (d) {
+      if (d && typeof d.mmEditor === 'string') MM_EDITOR = d.mmEditor;
+      if (d && typeof d.bookmarkMapFile === 'string') BM_MAP_FILE = d.bookmarkMapFile;
+    })
+    .catch(function () {})
+    .then(function () { settingsLoaded = true; });
 
   function getOpen() { try { return JSON.parse(localStorage.getItem(STORAGE)) || []; } catch (e) { return []; } }
   function setOpen(a) { try { localStorage.setItem(STORAGE, JSON.stringify(a)); } catch (e) {} }
@@ -4027,6 +4035,13 @@
   document.getElementById('bmSendBtn').addEventListener('click', function () {
     document.getElementById('saveMsg').textContent = '';   // 前の知らせが残っていたら消す
     if (!BM_ENABLED || !bmGroups.length) return;
+    // 設定に、地図のファイルの場所があるときは、別のタブへ渡さずに、そのファイルに書いて開く（下の bmFileMake）。
+    // 設定を読み終える前に押されたときは、読み終えてから決める
+    if (!settingsLoaded) {
+      settingsReady.then(function () { if (BM_MAP_FILE) bmFileMake(); else flashMsg('もう一度押してください'); });
+      return;
+    }
+    if (BM_MAP_FILE) { bmFileMake(); return; }
     var url = getMindmapUrl(), asked = false;
     if (!url) {
       url = askMindmapUrl();
@@ -4053,6 +4068,139 @@
     try {
       bmSend.win.postMessage({ type: BM_SEND_MARK, key: bmSend.key, title: 'ブックマーク', mm: bmSendXml() }, bmSend.origin);
     } catch (x) { /* 渡せなかったときは、開いた画面が知らせる */ }
+  });
+
+  // ===== ブックマークの地図を、このパソコンの .mm のファイルに書いて開く（2026-11-15 私の指示「ローカルサーバーで、マインドマップは管理したい」） =====
+  // 設定（api/config.json の bookmarkMapFile）に、地図のファイルの場所があるときの、帯の 🧠 ボタンの動き（2026-11-15 追加）。
+  // ブックマークの地図（上の bmSendXml と同じ木）を、FreeMind が書く形の字にして、そのファイルに書き、この画面で開く
+  // （.mm なので、編集画面のページが設定にあれば、そこで開く）。別のタブは開かず、ほかのサイトへは何も渡さない。
+  // 地図は、押したときのブックマークから作る。前に作ったファイルがあるときは、次の4つに分ける。
+  //   いまの地図と同じ中身                              … 書かずに開く
+  //   書き換えてあるが、ブックマークは、作ったときと同じ    … 書かずに、そのまま開く
+  //   作ったまま（書き換えていない）で、ブックマークが違う  … 書き直す（その日の最初の1回は、保存の窓口が、前の中身の控えを作る）
+  //   書き換えてあり、ブックマークも違う                  … 確かめの窓を出す。OK なら、前のファイルを、日時の付いた名前に変えて
+  //                                                    残してから、作り直す。キャンセルなら、前のファイルを、そのまま開く
+  // 見分けには、ファイルの中の印（<!-- hatohatoscope-bookmark-map sha256=… -->）を使う。印の値は、作ったときの、印の行を除いた中身の SHA-256。
+  // いまの中身から数えた値と合えば、作ったまま。いまのブックマークから作った地図の値と合えば、ブックマークは、作ったときと同じ。
+  // 編集画面で直して保存すると中身が変わり、FreeMind で保存すると印が消えるので、どちらも、書き換えてあるものとして扱う
+  var BM_FILE_MARK = 'hatohatoscope-bookmark-map';
+  var BM_FILE_NOTE = '<!-- To view this file, download free mind mapping software FreeMind from http://freemind.sourceforge.net -->';
+  var BM_FILE_EMPTY = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';   // 空の中身の SHA-256（作ったばかりの、空のファイル）
+  var bmFileBusy = false;
+  function bmFileBytes(text) { return new TextEncoder().encode(text); }
+  // 中身（バイト）の SHA-256 を、16進の字で返す
+  function bmFileSha(bytes) {
+    return window.crypto.subtle.digest('SHA-256', bytes).then(function (buf) {
+      var a = new Uint8Array(buf), s = '';
+      for (var i = 0; i < a.length; i++) s += ('0' + a[i].toString(16)).slice(-2);
+      return s;
+    });
+  }
+  // 地図の字（印の行を入れる前）。タグごとに行を分け、ASCII の外の字は &#x…; で書く（どちらも、FreeMind が書く形と同じ。
+  // 16 ビットを超える字は、FreeMind と同じに、サロゲートの対の2つで書く）
+  function bmFileBody() {
+    return bmSendXml().replace(/^<\?xml[^>]*\?>\s*/, '').replace(/></g, '>\n<')
+      .replace(/[^\x00-\x7f]/g, function (ch) { return '&#x' + ch.charCodeAt(0).toString(16) + ';'; })
+      .replace(/^(<map\b[^>]*>)\n/, '$1\n' + BM_FILE_NOTE + '\n') + '\n';
+  }
+  // いまのブックマークから作る地図。sha は、印の値（印の行を入れる前の中身の SHA-256）。text は、印の行を入れた、ファイルに書く字
+  function bmFileText() {
+    var body = bmFileBody();
+    return bmFileSha(bmFileBytes(body)).then(function (sha) {
+      return { sha: sha, text: body.replace(BM_FILE_NOTE + '\n', BM_FILE_NOTE + '\n<!-- ' + BM_FILE_MARK + ' sha256=' + sha + ' -->\n') };
+    });
+  }
+  // 前に作ったファイルの字から、印の値（sha）と、印の行を除いた中身（rest）を取り出す。印が無ければ null
+  function bmFileMarkOf(text) {
+    var m = new RegExp('<!-- ' + BM_FILE_MARK + ' sha256=([0-9a-f]{64}) -->\\n').exec(text);
+    return m ? { sha: m[1], rest: text.slice(0, m.index) + text.slice(m.index + m[0].length) } : null;
+  }
+  // 更新の時刻（api/stat の mtime。秒）を、名前に付ける字（YYYYMMDD_HHMMSS）にする
+  function bmFileStamp(sec) {
+    var d = new Date(sec * 1000);
+    function p(n) { return ('0' + n).slice(-2); }
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+  // ファイルを作る窓口（newfile）と、名前を変える窓口（rename）。断られたら、その言葉を投げる
+  function bmFileForm(url, p, name) {
+    var body = new URLSearchParams();
+    body.append('p', p);
+    body.append('name', name);
+    return fetch(url, { method: 'POST', headers: VIEWER_HDR, body: body })
+      .then(function (r) { return r.text().then(function (t) { if (!r.ok) throw new Error(t); return t; }); });
+  }
+  // 保存の窓口（本文をそのまま渡す形）。base は、いまのファイルの中身の SHA-256。ほかの道具が先に書き換えていたら、サーバーは書かずに
+  // 409 を返すので、false を返す。書けたら true
+  function bmFileSave(file, text, base, backup) {
+    return fetch('save?p=' + encodeURIComponent(file) + '&base=' + base + (backup ? '&backup=1' : ''),
+      { method: 'POST', headers: { 'X-Hatohatoscope': '1', 'Content-Type': 'application/octet-stream' }, body: bmFileBytes(text) })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          if (r.status === 409) return false;
+          if (!r.ok || !j.ok) throw new Error(j.error || String(r.status));
+          return true;
+        });
+      });
+  }
+  function bmFileMake() {
+    if (bmFileBusy) return;
+    if (!leaveFrameDoc()) return;   // 本文の枠のページに、保存していない変更があれば、先に確かめる
+    if (!(window.crypto && window.crypto.subtle && window.TextEncoder && window.TextDecoder)) {
+      flashMsg('このブラウザでは、ブックマークの地図をファイルに書けません', '#c00');
+      return;
+    }
+    var file = BM_MAP_FILE, dir = dirName(file), name = baseName(file), text = '', mark = '';
+    bmFileBusy = true;
+    // 書いたファイルを開く。新しいファイルが出来たときは、先にツリーを読み直す
+    function show(msg, tree) {
+      function go() { openFile(file); revealInTree(file); flashMsg(msg); }
+      if (tree) refreshTree(go); else go();
+    }
+    // 空のファイルを作ってから、地図を書く
+    function create() {
+      return bmFileForm('newfile', dir, name).then(function () { return bmFileSave(file, text, BM_FILE_EMPTY, false); })
+        .then(function (ok) { if (!ok) throw new Error('作ったファイルが、先に書き換えられました'); });
+    }
+    bmFileText().then(function (made) {
+      text = made.text;
+      mark = made.sha;
+      return fetch('api/stat?p=' + encodeURIComponent(file) + '&t=' + Date.now());
+    }).then(function (r) {
+      if (r.status === 404) return create().then(function () { show('ブックマークの地図を作りました: ' + name, true); });
+      if (!r.ok) throw new Error('場所を確かめられません（' + r.status + '）');
+      return r.json().then(function (st) {
+        return fetch(toUrl(file) + '&t=' + Date.now()).then(function (r2) {
+          if (!r2.ok) throw new Error('前のファイルを読めません（' + r2.status + '）');
+          return r2.arrayBuffer();
+        }).then(function (buf) {
+          var old = new TextDecoder('utf-8').decode(buf), blank = old.trim() === '', mk = bmFileMarkOf(old);
+          if (old === text) { show('ブックマークの地図は、前に作ったものと同じです: ' + name, false); return null; }
+          // 書き換えてあっても、ブックマークが、作ったときと同じなら（印の値が、いまの地図の値と同じ）、作り直す理由が無いので、そのまま開く
+          if (mk && mk.sha === mark) { show('ブックマークは、前に作ったときと同じです。書き換えてある地図を、そのまま開きました: ' + name, false); return null; }
+          // 作ったままか（印の値が、いまの中身から数えた値と合うか）
+          var same = blank ? true : (mk ? bmFileSha(bmFileBytes(mk.rest)).then(function (sha) { return sha === mk.sha; }) : false);
+          return Promise.all([bmFileSha(buf), same]).then(function (a) {
+            // 作ったまま（か、空）なら、書き直す。空でなければ、保存の窓口に、控えを頼む
+            return (a[1] ? bmFileSave(file, text, a[0], !blank) : Promise.resolve(false)).then(function (ok) {
+              if (ok) { show('ブックマークの地図を、いまのブックマークで作り直しました: ' + name, false); return null; }
+              // 作ったあとに書き換えてある（か、いま、ほかの道具が書き換えた）。黙って上書きしない
+              var keep = name.replace(/\.mm$/i, '') + '_' + bmFileStamp(st.mtime) + '.mm';
+              if (!window.confirm('「' + name + '」は、作ったあとに書き換えられています。\n\nOK：前の地図を「' + keep + '」の名前で残して、いまのブックマークで作り直します。\nキャンセル：前の地図を、そのまま開きます。')) {
+                show('前の地図を、そのまま開きました: ' + name, false);
+                return null;
+              }
+              return bmFileForm('rename', file, keep).then(create).then(function () { show('前の地図を「' + keep + '」の名前で残して、作り直しました', true); });
+            });
+          });
+        });
+      });
+    }).catch(function (e) {
+      flashMsg('ブックマークの地図を書けませんでした（' + String((e && e.message) || e).replace(/^NG: /, '') + '）', '#c00');
+    }).then(function () { bmFileBusy = false; });
+  }
+  // ファイルに書く設定のときは、ボタンの説明を、その動きに合わせる
+  settingsReady.then(function () {
+    if (BM_MAP_FILE) document.getElementById('bmSendBtn').title = 'ブックマークの全体を、マインドマップのファイル（' + baseName(BM_MAP_FILE) + '）に書いて、開く';
   });
 
   // URLで直接開く: all.html?open=<Windowsフルパス(encodeURIComponent)>
