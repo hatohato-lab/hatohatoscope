@@ -14,6 +14,7 @@
 
 セキュリティ上の前提は README のとおり: 認証は無く、127.0.0.1 限定の待受だけが守り。
 """
+import hashlib
 import json
 import os
 import re
@@ -373,30 +374,134 @@ SAVE_EXTS = {'md', 'txt', 'json', 'py', 'php', 'js', 'css', 'html', 'htm', 'xml'
              'mm'}   # FreeMind のマインドマップ（2026-11-15 追加。マインドマップの編集画面が、同じ .mm に書き戻すため）
 
 
+# 本文をそのまま受け取る形（下の save_file の 2）で、受け取る本文の上限
+SAVE_RAW_MAX = 64 * 1024 * 1024
+# 控えの写しの場所の長さの上限。超えるときは、短い形の名前にする（Windows の決まりの 260 字より短くしておく）
+BACKUP_PATH_MAX = 240
+
+
+def file_sig(path, data):
+    """ファイルの中身の SHA-256 と、更新時刻と、大きさ（更新時刻と大きさは、api/stat と同じ値）。"""
+    st = os.stat(path)
+    return {'sha256': hashlib.sha256(data).hexdigest(), 'mtime': st.st_mtime, 'size': st.st_size}
+
+
+def backup_target(config, real):
+    """控えの写しを置く場所を返す。置かないときは None（2026-11-15 追加）。
+
+    設定（config.json の backupDir）に、控えのフォルダの絶対パスを書く。作業フォルダの中のフォルダだけを受ける。
+    形は <backupDir>/<作業フォルダからの相対の場所>/<名前>_<YYYYMMDD><拡張子>。その日の最初の1回だけ作るので、名前は日付までにする。
+    場所が長すぎるときは、<backupDir>/<名前>_<YYYYMMDD>_<元の場所の SHA-256 の頭の8字><拡張子> にする。
+    控えのフォルダの中のファイルは、控えを作らない。
+    """
+    bdir = config.get('backupDir')
+    if not isinstance(bdir, str) or not bdir.strip():
+        return None
+    root_real = os.path.realpath(config['root'])
+    b_real = os.path.realpath(bdir)
+    if not norm(b_real).startswith(norm(root_real) + '/'):
+        return None
+    if norm(real).startswith(norm(b_real) + '/'):
+        return None
+    stem, ext = os.path.splitext(os.path.basename(real))
+    day = time.strftime('%Y%m%d')
+    target = os.path.normpath(os.path.join(b_real, os.path.relpath(os.path.dirname(real), root_real), '%s_%s%s' % (stem, day, ext)))
+    if len(target) > BACKUP_PATH_MAX:
+        mark = hashlib.sha256(norm(real).encode('utf-8')).hexdigest()[:8]
+        target = os.path.join(b_real, '%s_%s_%s%s' % (stem[:60], day, mark, ext))
+    return target
+
+
 @app.route('/save', methods=['POST'])
 @viewer_only
 def save_file():
+    """ファイルを書き換える窓口。本文の渡し方は2つ。
+
+    1. フォーム（p と body）。画面の「編集」が使う。答えは字（OK: … / NG: …）。
+    2. 本文をそのまま（Content-Type: application/octet-stream。場所は URL の p）。受け取ったバイトを、そのまま書く（2026-11-15 追加）。
+       本文の枠のページ（マインドマップの編集画面など）が、表示中のファイルを書き戻すために使う。答えは JSON。
+       URL に、次の3つを付けられる。
+         base=<SHA-256>  いまのファイルの中身の SHA-256 が、これと違えば、書かずに 409 を返す（ほかの道具が、先に書き換えたとき）
+         backup=1        書く前に、その日の最初の1回だけ、いまのファイルの写しを、控えのフォルダ（backup_target）に作る
+         dry=1           書かずに、書けるかどうかと、いまのファイルの SHA-256 を返す
+
+    どちらの形でも、.. やリンクをたどった先が作業フォルダの外なら、断る（rename、mkdir、newfile と同じ守り）。
+    """
+    raw = request.mimetype == 'application/octet-stream'
+    src = request.args if raw else request.form
+
+    def ng(msg, status, **more):
+        if raw:
+            return Response(json.dumps(dict({'ok': False, 'error': msg}, **more), ensure_ascii=False),
+                            status=status, mimetype='application/json', headers={'Cache-Control': 'no-store'})
+        return Response('NG: ' + msg, status=status, mimetype='text/plain')
+
     config = load_config()
     if config is None:
-        return Response('NG: config not found', status=500, mimetype='text/plain')
+        return ng('config not found', 500)
     root_n = norm(config['root'])
-    p = request.form.get('p', '')
+    p = src.get('p', '')
     if not p:
-        return Response('NG: no path', status=400, mimetype='text/plain')
+        return ng('no path', 400)
     if not norm(p).startswith(root_n + '/'):
-        return Response('NG: outside root', status=403, mimetype='text/plain')
+        return ng('outside root', 403)
     ext = os.path.splitext(p)[1].lstrip('.').lower()
     if ext not in SAVE_EXTS:
-        return Response('NG: not editable type (.' + ext + ')', status=415, mimetype='text/plain')
+        return ng('not editable type (.' + ext + ')', 415)
     if not os.path.isfile(p):
-        return Response('NG: file not found', status=404, mimetype='text/plain')
-    body = request.form.get('body', '').encode('utf-8')
+        return ng('file not found', 404)
+    # .. やリンクで、作業フォルダの外へ抜ける手口を塞ぐ（2026-11-15 追加。これまでは、.. を入れた場所で、外のファイルに書けた）
+    real = os.path.realpath(p)
+    if not norm(real).startswith(norm(os.path.realpath(config['root'])) + '/'):
+        return ng('outside root (resolved)', 403)
+    if not raw:
+        body = request.form.get('body', '').encode('utf-8')
+        try:
+            with open(p, 'wb') as f:
+                f.write(body)
+        except OSError:
+            return ng('write failed', 500)
+        return Response('OK: %d bytes saved' % len(body), mimetype='text/plain')
+
+    # ---- 本文をそのまま受け取る形 ----
+    if request.content_length is not None and request.content_length > SAVE_RAW_MAX:
+        return ng('too large', 413)
     try:
-        with open(p, 'wb') as f:
-            f.write(body)
+        with open(real, 'rb') as f:
+            cur = f.read()
     except OSError:
-        return Response('NG: write failed', status=500, mimetype='text/plain')
-    return Response('OK: %d bytes saved' % len(body), mimetype='text/plain')
+        return ng('read failed', 500)
+    sig = file_sig(real, cur)
+    base = request.args.get('base', '').strip().lower()
+    if base and base != sig['sha256']:
+        return ng('changed', 409, **sig)
+    target = backup_target(config, real)
+    if request.args.get('dry') == '1':
+        return Response(json.dumps(dict(sig, ok=True, dry=True, backupDir=target is not None)),
+                        mimetype='application/json', headers={'Cache-Control': 'no-store'})
+    body = request.get_data(cache=False)
+    made = False
+    if request.args.get('backup') == '1' and target is not None and not os.path.exists(target):
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, 'xb') as f:   # x は既にあれば失敗する（控えを上書きしない）
+                f.write(cur)
+            made = True
+        except OSError:
+            return ng('backup failed', 500)
+    try:
+        with open(real, 'wb') as f:
+            f.write(body)
+        with open(real, 'rb') as f:
+            now = f.read()
+    except OSError:
+        return ng('write failed', 500)
+    out = file_sig(real, now)
+    if now != body:   # 書いた中身を読み戻して、受け取った本文と同じかを確かめる
+        return ng('write not verified', 500, **out)
+    has = target is not None and os.path.isfile(target)
+    out.update(ok=True, bytes=len(body), backup=target if has else '', backupMade=made, backupDir=target is not None)
+    return Response(json.dumps(out, ensure_ascii=False), mimetype='application/json', headers={'Cache-Control': 'no-store'})
 
 # ---------------------------------------------------------------- フォルダ作成
 

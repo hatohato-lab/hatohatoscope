@@ -955,7 +955,24 @@
     return i >= 0 ? html.slice(0, i + 6) + tag + html.slice(i + 6) : tag + html;
   }
 
+  // ===== 本文の枠のページが、表示中のファイルを自分で書き換えるときの決まり（2026-11-15 追加。マインドマップの編集画面が使う） =====
+  // 枠のページは、window.hhscopeDoc に、次の3つを置く。ビューアは、同じサイトのページのものだけを、使うときに読む。
+  //   unsaved  … 保存していない変更がある（true の間、ビューアは、自動の読み直しをせず、ほかのファイルを開く前に確かめる）
+  //   saving   … いま、表示中のファイルに書いている（true の間、ビューアは、書き換わりの確かめを、次の回に送る）
+  //   savedSig … 自分で書いたあとの、ファイルの更新時刻と大きさ（api/stat の mtime + ':' + size）。これと同じなら、読み直さない
+  function frameDoc() {
+    try { var d = iframe.contentWindow && iframe.contentWindow.hhscopeDoc; return d && typeof d === 'object' ? d : null; } catch (e) { return null; }
+  }
+  // 枠のページに、保存していない変更があれば、進んでよいかを確かめる。進むなら true（枠のページの unsaved を下ろして、変更を捨てると伝える）
+  function leaveFrameDoc() {
+    var d = frameDoc();
+    if (!d || !d.unsaved) return true;
+    if (!window.confirm('保存していない変更があります。\nこのまま進むと、変更は消えます。進みますか。')) return false;
+    try { d.unsaved = false; } catch (e) {}
+    return true;
+  }
   function openFile(winPath) {
+    if (!leaveFrameDoc()) return false;   // 枠のページの、保存していない変更を、黙って消さない
     if (!bmMapHold) closeBmMap();   // ブックマークの地図を開いていたら閉じて、本文を見せる（2026-11-14。自動の読み直しのときは閉じない）
     showFileTitle(winPath);
     urlInput.value = winPath;
@@ -1320,11 +1337,11 @@
     var p = normPath(d.path);
     if (!p || !isAbsPath(p)) return;
     fetch('api/stat?p=' + encodeURIComponent(p) + '&t=' + Date.now()).then(function (r) {
-      if (r.ok) { openFile(p); revealInTree(p); return; }
+      if (r.ok) { if (openFile(p) !== false) revealInTree(p); return; }
       urlInput.value = p;
       updateClearBtn();
       openFromInput();
-    }).catch(function () { openFile(p); revealInTree(p); });
+    }).catch(function () { if (openFile(p) !== false) revealInTree(p); });
   });
 
   // serve 経由で表示したHTML（同一オリジン）にも、読み込み後にリンク振り分けを仕込む。
@@ -1344,7 +1361,7 @@
       if (h.indexOf('//') === 0) { window.open('https:' + h, '_blank', 'noopener'); return; }
       if (/^[a-z][a-z0-9+.-]*:/i.test(h)) { window.open(a.href, '_blank', 'noopener'); return; }
       var p = resolveRelPath(dirName(currentWin), h);   // 基点は押した時点のファイル（「戻る」で文書が替わっても合う）
-      if (p) { openFile(p); revealInTree(p); }
+      if (p && openFile(p) !== false) revealInTree(p);
     });
   });
 
@@ -1702,7 +1719,15 @@
         var sig = d.mtime + ':' + d.size;
         if (watchPath !== p) { watchPath = p; watchSig = sig; return; }   // 開いた直後の1回目は基準にするだけ
         if (sig === watchSig) return;
+        var fd = frameDoc();
+        if (fd && fd.saving) return;                 // 枠のページが、いま書いている。次の回で確かめる
         watchSig = sig;
+        if (fd && fd.savedSig === sig) return;       // 枠のページが、自分で書いた中身。読み直さない
+        if (fd && fd.unsaved) {                      // 保存していない変更を消さない。枠のページに知らせる
+          flashMsg('ファイルが、ほかで書き換わりました。保存していない変更があるので、読み直していません', '#c00');
+          try { iframe.contentWindow.dispatchEvent(new Event('hhscope-file-changed')); } catch (e) {}
+          return;
+        }
         reloadKeepingScroll(p);
       })
       .catch(function () {});
@@ -4066,6 +4091,8 @@
     var t = e.target, tag = (t && t.tagName) ? t.tagName.toLowerCase() : '';
     if (tag === 'input' || tag === 'textarea') return;
     if (e.hhFromMmEditor) return;   // マインドマップの編集画面の中で押した Esc では、読み直さない（直している途中の地図を失わないため。2026-11-15）
+    var fdoc = frameDoc();
+    if (fdoc && fdoc.unsaved) { flashMsg('保存していない変更があるので、読み直しません', '#c00'); return; }
     hardReloadViewer();
   });
 
