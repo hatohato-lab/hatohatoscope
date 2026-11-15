@@ -120,6 +120,10 @@
   #diffBtn { flex: 0 0 auto; font-size: 12px; padding: 5px 8px; cursor: pointer; }
   #diffBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   #copyBtn.copied { background: #2e7d32; color: #fff; border-color: #2e7d32; }
+  /* マインドマップの画面を開くボタン（2026-11-14 本人指示）。上の段の右の端に置く。
+     字のボタン（幅 104px）にすると、パスの欄がその分縮み、上の段が2行に折れやすくなるので、パスのコピー（📋）と同じ大きさの絵のボタンにする */
+  #mindmapBtn { flex: 0 0 auto; width: 30px; font-size: 14px; padding: 4px 0; cursor: pointer; text-align: center; }
+  #mindmapBtn:hover { background: #1a4f8a; color: #fff; border-color: #1a4f8a; }
   /* 開いているファイル名の帯（パス欄の下に常時表示。どの拡張子でも出す） */
   /* 場所の階段のいちばん下の段にファイル名を入れる（2026-10-31 本人指示。前は1段目にファイル名だけの行があった） */
   /* 帯は本文で使わない薄いベージュにし、本文との境目に濃いめの線を引く（2026-10-31 本人指示。
@@ -391,6 +395,8 @@
       <button id="saveBtn" style="display:none;">保存</button>
       <button id="cancelBtn" style="display:none;">キャンセル</button>
       <span id="saveMsg" style="margin-left:8px;font-size:13px;color:#178a3a;"></span>
+      <!-- マインドマップの画面を開くボタン（2026-11-14 本人指示。開く URL は、最初に押したときに登録する） -->
+      <button id="mindmapBtn" title="マインドマップの画面を開く">🧠</button>
     </div>
     <!-- ブックマークの帯（2026-11-03 本人指示。Chrome のブックマークバーの形） -->
     <div class="bm-bar" id="bmBar" style="display:none;">
@@ -3773,6 +3779,85 @@
   }
   document.getElementById('maxBtn').addEventListener('click', function () { setMaximized(true); });
   document.getElementById('restoreBtn').addEventListener('click', function () { setMaximized(false); });
+
+  // ===== マインドマップの画面を開くボタン（2026-11-14 本人指示「上の方にボタンをつけて、それを押すと、マインドマップの画面が開く」） =====
+  // 開く URL は、使う人ごとに違うので、このファイルには書かない。最初に押したときに聞いて、ブラウザに覚えさせる（localStorage）。
+  // いつも同じ名前のタブに開く。すでに開いているときは、読み直さずに、そのタブを前に出す（開いている地図を、そのまま続けて使えるように）
+  var MINDMAP_KEY = 'allViewerMindmapUrl';
+  var MINDMAP_WIN = 'hatohatoscopeMindmap';
+  var mindmapBtn = document.getElementById('mindmapBtn');
+  var mindmapMoved = false;   // 開く URL を変えた直後は、すでに開いているタブにも、新しい URL を入れる
+  // http か https の URL だけを通す（javascript: などの字を、開く先にしない）
+  function cleanMindmapUrl(s) {
+    s = String(s == null ? '' : s).trim();
+    if (!s) return '';
+    try {
+      var u = new URL(s);
+      return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : '';
+    } catch (e) { return ''; }
+  }
+  function getMindmapUrl() {
+    try { return cleanMindmapUrl(localStorage.getItem(MINDMAP_KEY)); } catch (e) { return ''; }
+  }
+  function paintMindmapBtn() {
+    var url = getMindmapUrl();
+    mindmapBtn.title = url
+      ? 'マインドマップの画面を開く（' + url + '）。右クリックで、開く URL を変える'
+      : 'マインドマップの画面を開く。最初に押したときに、開く URL を登録する';
+  }
+  // 開く URL を聞いて覚える。覚えた URL を返す（やめたとき、登録を消したとき、URL の形でないときは ''）
+  function askMindmapUrl() {
+    var cur = getMindmapUrl();
+    var v = window.prompt('マインドマップの画面の URL を入れてください（http:// か https:// で始まる URL）。\n空にして OK を押すと、登録を消します。', cur);
+    if (v === null) return '';   // キャンセル
+    if (!v.trim()) {
+      try { localStorage.removeItem(MINDMAP_KEY); } catch (e) {}
+      paintMindmapBtn();
+      if (cur) flashMsg('マインドマップの URL の登録を消しました');
+      return '';
+    }
+    var url = cleanMindmapUrl(v);
+    if (!url) { flashMsg('URL の形ではないので、登録しませんでした', '#c00'); return ''; }
+    try { localStorage.setItem(MINDMAP_KEY, url); } catch (e) { flashMsg('URL を覚えられませんでした', '#c00'); return ''; }
+    if (url !== cur) mindmapMoved = true;
+    paintMindmapBtn();
+    return url;
+  }
+  // マインドマップの画面を開く。開けたら true。ブラウザがタブを開かせなかったら false
+  function openMindmap(url) {
+    var w = null;
+    try { w = window.open('', MINDMAP_WIN); } catch (e) { w = null; }
+    if (!w) return false;
+    // 新しく出来たタブは、空のページ（about:blank）。マインドマップを開いているタブは、別のサイトなので場所を読めない
+    var blank = false;
+    try { blank = (w.location.href === 'about:blank'); } catch (e) { blank = false; }
+    if (blank || mindmapMoved) {
+      try { w.location.replace(url); mindmapMoved = false; } catch (e) { return false; }
+    }
+    try { w.focus(); } catch (e) { /* 前に出せなくても、開いてはいる */ }
+    return true;
+  }
+  mindmapBtn.addEventListener('click', function () {
+    document.getElementById('saveMsg').textContent = '';   // 前の知らせが残っていたら消す
+    var url = getMindmapUrl(), asked = false;
+    if (!url) {
+      url = askMindmapUrl();
+      asked = true;
+      if (!url) return;
+    }
+    if (openMindmap(url)) return;
+    // URL を入れるのに時間がかかると、ブラウザは「押した直後」と見なさず、タブを開かせないことがある
+    flashMsg(asked ? 'URL を登録しました。もう一度押すと、開きます' : 'タブを開けませんでした。もう一度押してください', asked ? '' : '#c00');
+  });
+  // 右クリックで、開く URL を変える（空にすると、登録を消す）
+  mindmapBtn.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    document.getElementById('saveMsg').textContent = '';   // 前の知らせが残っていたら消す
+    var had = getMindmapUrl();
+    var url = askMindmapUrl();
+    if (url && url !== had) flashMsg('マインドマップの URL を登録しました');
+  });
+  paintMindmapBtn();
 
   // URLで直接開く: all.html?open=<Windowsフルパス(encodeURIComponent)>
   // ファイルは本文に開く。フォルダは、ツリーで開いて見せる（2026-11-14 追加。ほかの画面のリンクから、フォルダの場所も開けるように）。
